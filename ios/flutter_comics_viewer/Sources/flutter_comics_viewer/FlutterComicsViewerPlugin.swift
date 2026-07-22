@@ -1,7 +1,6 @@
 import Flutter
 import UIKit
-// TODO: Uncomment when ComicsViewer package is added
-// import ComicsViewer
+import ComicsViewer
 
 public class FlutterComicsViewerPlugin: NSObject, FlutterPlugin {
     public static func register(with registrar: FlutterPluginRegistrar) {

@@ -48,4 +48,37 @@ class MethodChannelComicsViewer extends ComicsViewerPlatform {
   Future<void> setMuted(bool muted) async {
     await methodChannel.invokeMethod<void>('setMuted', {'muted': muted});
   }
+
+  @override
+  Future<void> togglePreview(bool show) async {
+    await methodChannel.invokeMethod<void>('togglePreview', {'show': show});
+  }
+
+  @override
+  Future<void> toggleSounds(bool enabled) async {
+    await methodChannel.invokeMethod<void>('toggleSounds', {'enabled': enabled});
+  }
+
+  @override
+  Future<void> setLanguage(int languageIndex) async {
+    await methodChannel.invokeMethod<void>('setLanguage', {'languageIndex': languageIndex});
+  }
+
+  @override
+  Future<bool> isPlaying() async {
+    final playing = await methodChannel.invokeMethod<bool>('isPlaying');
+    return playing ?? false;
+  }
+
+  @override
+  Future<double> getDuration() async {
+    final duration = await methodChannel.invokeMethod<double>('getDuration');
+    return duration ?? 0.0;
+  }
+
+  @override
+  Future<double> getCurrentPosition() async {
+    final position = await methodChannel.invokeMethod<double>('getCurrentPosition');
+    return position ?? 0.0;
+  }
 }

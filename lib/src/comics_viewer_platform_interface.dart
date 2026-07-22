@@ -58,4 +58,34 @@ abstract class ComicsViewerPlatform extends PlatformInterface {
   Future<void> setMuted(bool muted) {
     throw UnimplementedError('setMuted() has not been implemented.');
   }
+
+  /// Toggle preview layers visibility
+  Future<void> togglePreview(bool show) {
+    throw UnimplementedError('togglePreview() has not been implemented.');
+  }
+
+  /// Toggle sound playback
+  Future<void> toggleSounds(bool enabled) {
+    throw UnimplementedError('toggleSounds() has not been implemented.');
+  }
+
+  /// Set language (0-based index)
+  Future<void> setLanguage(int languageIndex) {
+    throw UnimplementedError('setLanguage() has not been implemented.');
+  }
+
+  /// Check if currently playing
+  Future<bool> isPlaying() {
+    throw UnimplementedError('isPlaying() has not been implemented.');
+  }
+
+  /// Get total scrollable height/duration
+  Future<double> getDuration() {
+    throw UnimplementedError('getDuration() has not been implemented.');
+  }
+
+  /// Get current position
+  Future<double> getCurrentPosition() {
+    throw UnimplementedError('getCurrentPosition() has not been implemented.');
+  }
 }

@@ -110,6 +110,68 @@ class ComicsViewerController {
     }
   }
 
+  /// Toggle preview layers visibility
+  Future<void> togglePreview(bool show) async {
+    try {
+      await _platform.togglePreview(show);
+    } catch (e) {
+      onError?.call(e.toString());
+      rethrow;
+    }
+  }
+
+  /// Toggle sound playback
+  Future<void> toggleSounds(bool enabled) async {
+    try {
+      _soundEnabled = enabled;
+      await _platform.toggleSounds(enabled);
+    } catch (e) {
+      onError?.call(e.toString());
+      rethrow;
+    }
+  }
+
+  /// Set language (0-based index)
+  Future<void> setLanguage(int languageIndex) async {
+    try {
+      _languageIndex = languageIndex;
+      await _platform.setLanguage(languageIndex);
+    } catch (e) {
+      onError?.call(e.toString());
+      rethrow;
+    }
+  }
+
+  /// Check if currently playing
+  Future<bool> get isPlaying async {
+    try {
+      return await _platform.isPlaying();
+    } catch (e) {
+      onError?.call(e.toString());
+      rethrow;
+    }
+  }
+
+  /// Get total scrollable height/duration
+  Future<double> get duration async {
+    try {
+      return await _platform.getDuration();
+    } catch (e) {
+      onError?.call(e.toString());
+      rethrow;
+    }
+  }
+
+  /// Get current position
+  Future<double> get currentPosition async {
+    try {
+      return await _platform.getCurrentPosition();
+    } catch (e) {
+      onError?.call(e.toString());
+      rethrow;
+    }
+  }
+
   /// Dispose resources
   void dispose() {
     // Clean up resources if needed

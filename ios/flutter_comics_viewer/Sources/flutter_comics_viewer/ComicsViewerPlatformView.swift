@@ -1,14 +1,12 @@
 import Flutter
 import UIKit
-// TODO: Uncomment when ComicsViewer package is added to the app
-// import ComicsViewer
+import ComicsViewer
 
 class ComicsViewerPlatformView: NSObject, FlutterPlatformView {
     private let _view: UIView
     private let methodChannel: FlutterMethodChannel
-
-    // TODO: Uncomment when ComicsViewer is available
-    // private let imageScrollView: ImageScrollView
+    private let imageScrollView: ImageScrollView
+    private var controller: ComicsViewerController!
 
     private var filePath: String?
     private var languageIndex: Int = 0
@@ -28,6 +26,11 @@ class ComicsViewerPlatformView: NSObject, FlutterPlatformView {
             binaryMessenger: messenger
         )
 
+        // Initialize ImageScrollView from ComicsViewer package
+        imageScrollView = ImageScrollView()
+        imageScrollView.isComics = true
+        imageScrollView.translatesAutoresizingMaskIntoConstraints = false
+
         super.init()
 
         // Extract creation parameters
@@ -37,13 +40,8 @@ class ComicsViewerPlatformView: NSObject, FlutterPlatformView {
             soundEnabled = arguments["soundEnabled"] as? Bool ?? true
         }
 
-        // TODO: Initialize ImageScrollView from ComicsViewer package
-        /*
-        imageScrollView = ImageScrollView()
-        imageScrollView.isComics = true
         imageScrollView.languageIndex = languageIndex
         imageScrollView.soundEnabled = soundEnabled
-        imageScrollView.translatesAutoresizingMaskIntoConstraints = false
 
         _view.addSubview(imageScrollView)
         NSLayoutConstraint.activate([
@@ -53,11 +51,18 @@ class ComicsViewerPlatformView: NSObject, FlutterPlatformView {
             imageScrollView.bottomAnchor.constraint(equalTo: _view.bottomAnchor)
         ])
 
+        // Initialize controller
+        controller = ComicsViewerController(scrollView: imageScrollView)
+
+        // Setup scroll listener
+        controller.onScrollChanged = { [weak self] position in
+            self?.methodChannel.invokeMethod("onScrollChanged", arguments: ["position": position])
+        }
+
         // Load comics if file path is provided
         if let path = filePath {
             loadComics(path: path)
         }
-        */
 
         methodChannel.setMethodCallHandler { [weak self] (call, result) in
             self?.handleMethodCall(call, result: result)
@@ -80,13 +85,11 @@ class ComicsViewerPlatformView: NSObject, FlutterPlatformView {
             result(nil)
 
         case "play":
-            // TODO: Implement play functionality
-            // imageScrollView.resumeSounds()
+            controller.play()
             result(nil)
 
         case "pause":
-            // TODO: Implement pause functionality
-            // imageScrollView.pauseSounds()
+            controller.pause()
             result(nil)
 
         case "setScrollPosition":
@@ -95,49 +98,50 @@ class ComicsViewerPlatformView: NSObject, FlutterPlatformView {
                 result(FlutterError(code: "INVALID_ARGUMENT", message: "Position is required", details: nil))
                 return
             }
-            // TODO: Set scroll position
-            // let scrollY = CGFloat(position) * imageScrollView.contentSize.height
-            // imageScrollView.setContentOffset(CGPoint(x: 0, y: scrollY), animated: false)
+            controller.setScrollPosition(CGFloat(position))
             result(nil)
 
         case "getScrollPosition":
-            // TODO: Get scroll position
-            // let position = Double(imageScrollView.contentOffset.y / imageScrollView.contentSize.height)
-            // result(position)
-            result(0.0)
+            let position = controller.getScrollPosition()
+            result(Double(position))
 
-        case "setLanguageIndex":
+        case "togglePreview":
             guard let args = call.arguments as? [String: Any],
-                  let index = args["index"] as? Int else {
-                result(FlutterError(code: "INVALID_ARGUMENT", message: "Index is required", details: nil))
+                  let show = args["show"] as? Bool else {
+                result(FlutterError(code: "INVALID_ARGUMENT", message: "Show flag is required", details: nil))
                 return
             }
-            languageIndex = index
-            // TODO: Update language
-            // imageScrollView.languageIndex = index
-            // imageScrollView.reloadLanguage()
+            controller.togglePreview(show)
             result(nil)
 
-        case "setSoundEnabled":
+        case "toggleSounds":
             guard let args = call.arguments as? [String: Any],
                   let enabled = args["enabled"] as? Bool else {
                 result(FlutterError(code: "INVALID_ARGUMENT", message: "Enabled flag is required", details: nil))
                 return
             }
+            controller.toggleSounds(enabled)
             soundEnabled = enabled
-            // TODO: Update sound enabled
-            // imageScrollView.soundEnabled = enabled
             result(nil)
 
-        case "setMuted":
+        case "setLanguage":
             guard let args = call.arguments as? [String: Any],
-                  let muted = args["muted"] as? Bool else {
-                result(FlutterError(code: "INVALID_ARGUMENT", message: "Muted flag is required", details: nil))
+                  let index = args["languageIndex"] as? Int else {
+                result(FlutterError(code: "INVALID_ARGUMENT", message: "Language index is required", details: nil))
                 return
             }
-            // TODO: Mute/unmute
-            // imageScrollView.mute(muted)
+            controller.setLanguage(index)
+            languageIndex = index
             result(nil)
+
+        case "isPlaying":
+            result(controller.isPlaying)
+
+        case "getDuration":
+            result(Double(controller.duration))
+
+        case "getCurrentPosition":
+            result(Double(controller.currentPosition))
 
         default:
             result(FlutterMethodNotImplemented)
@@ -145,21 +149,18 @@ class ComicsViewerPlatformView: NSObject, FlutterPlatformView {
     }
 
     private func loadComics(path: String) {
-        // TODO: Load comics using ArchiveManager and ImageScrollView
-        /*
-        let fileURL = URL(fileURLWithPath: path)
-        ArchiveManager.shared.currentArchiveURL = fileURL
-
-        ArchiveManager.shared.comics { [weak self] comics in
-            guard let self = self, let comics = comics else { return }
-            DispatchQueue.main.async {
-                self.imageScrollView.comics = comics
+        controller.loadComics(filePath: path) { [weak self] result in
+            switch result {
+            case .success:
+                self?.methodChannel.invokeMethod("onLoaded", arguments: nil)
+            case .failure(let error):
+                self?.methodChannel.invokeMethod("onError", arguments: ["error": error.localizedDescription])
             }
         }
-        */
     }
 
     deinit {
+        controller.dispose()
         methodChannel.setMethodCallHandler(nil)
     }
 }
