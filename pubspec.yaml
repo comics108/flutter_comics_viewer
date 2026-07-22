@@ -1,7 +1,7 @@
-name: puzzle
-description: "A new Flutter plugin project."
-version: 0.0.1
-homepage:
+name: flutter_comics_viewer
+description: "Flutter plugin for rendering interactive comics and puzzles with animations and sound."
+version: 1.0.0
+homepage: https://nativemind.net
 
 environment:
   sdk: ^3.12.2
@@ -10,6 +10,9 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_web_plugins:
+    sdk: flutter
+  web: ^1.0.0
   plugin_platform_interface: ^2.0.2
 
 dev_dependencies:
@@ -35,10 +38,19 @@ flutter:
   plugin:
     platforms:
       android:
-        package: net.nativemind.puzzle
-        pluginClass: PuzzlePlugin
+        package: net.nativemind.flutter.comics.viewer
+        pluginClass: FlutterComicsViewerPlugin
       ios:
-        pluginClass: PuzzlePlugin
+        pluginClass: FlutterComicsViewerPlugin
+      linux:
+        pluginClass: ViewerPlugin
+      macos:
+        pluginClass: ViewerPlugin
+      windows:
+        pluginClass: ViewerPluginCApi
+      web:
+        pluginClass: ViewerWeb
+        fileName: viewer_web.dart
 
   # To add assets to your plugin package, add an assets section, like this:
   # assets:

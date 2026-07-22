@@ -1,4 +1,4 @@
-# puzzle
+# viewer
 
 A new Flutter plugin project.
 

@@ -1,6 +1,6 @@
-# puzzle_example
+# viewer_example
 
-Demonstrates how to use the puzzle plugin.
+Demonstrates how to use the viewer plugin.
 
 ## Getting Started
 

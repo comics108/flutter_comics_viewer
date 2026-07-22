@@ -1,7 +1,8 @@
-group = "net.nativemind.puzzle"
-version = "1.0"
+group = "net.nativemind.flutter.comics.viewer"
+version = "1.0.0"
 
 buildscript {
+    val kotlinVersion = "2.3.20"
     repositories {
         google()
         mavenCentral()
@@ -9,6 +10,7 @@ buildscript {
 
     dependencies {
         classpath("com.android.tools.build:gradle:9.0.1")
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlinVersion")
     }
 }
 
@@ -24,7 +26,7 @@ plugins {
 }
 
 android {
-    namespace = "net.nativemind.puzzle"
+    namespace = "net.nativemind.flutter.comics.viewer"
 
     compileSdk = 36
 
@@ -33,23 +35,46 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    sourceSets {
+        getByName("main") {
+            java.srcDirs("src/main/kotlin")
+        }
+        getByName("test") {
+            java.srcDirs("src/test/kotlin")
+        }
+    }
+
     defaultConfig {
         minSdk = 24
     }
 
     testOptions {
-        unitTests.all {
-            it.outputs.upToDateWhen { false }
+        unitTests {
+            isIncludeAndroidResources = true
+            all {
+                it.useJUnitPlatform()
 
-            it.testLogging {
-                events("passed", "skipped", "failed", "standardOut", "standardError")
-                showStandardStreams = true
+                it.outputs.upToDateWhen { false }
+
+                it.testLogging {
+                    events("passed", "skipped", "failed", "standardOut", "standardError")
+                    showStandardStreams = true
+                }
             }
         }
     }
 }
 
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+    }
+}
+
 dependencies {
-    testImplementation("junit:junit:4.13.2")
+    // Comics Viewer Android Library
+    implementation(project(":comics-viewer-android"))
+
+    testImplementation("org.jetbrains.kotlin:kotlin-test")
     testImplementation("org.mockito:mockito-core:5.0.0")
 }
