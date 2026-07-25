@@ -1,0 +1,17 @@
+name: Publish
+
+# Runs independently of build.yml: a failed publish must never mark the
+# build workflow (or this tag's commit status from build.yml) as failed.
+#
+# Uses pub.dev's OIDC "trusted publishing" — no secrets to manage here, but
+# this repo must be registered as the trusted publisher for the package once
+# in the pub.dev package admin UI (Automated publishing) before this works.
+on:
+  push:
+    tags: ["v*.*.*"]
+
+jobs:
+  publish:
+    permissions:
+      id-token: write # required for OIDC authentication to pub.dev
+    uses: dart-lang/setup-dart/.github/workflows/publish.yml@v1

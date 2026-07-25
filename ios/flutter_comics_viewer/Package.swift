@@ -12,13 +12,15 @@ let package = Package(
         .library(name: "viewer", targets: ["viewer"])
     ],
     dependencies: [
-        .package(name: "FlutterFramework", path: "../FlutterFramework")
+        .package(name: "FlutterFramework", path: "../FlutterFramework"),
+        .package(name: "ComicsViewer", path: "../../../comics-viewer-ios")
     ],
     targets: [
         .target(
             name: "viewer",
             dependencies: [
-                .product(name: "FlutterFramework", package: "FlutterFramework")
+                .product(name: "FlutterFramework", package: "FlutterFramework"),
+                .product(name: "ComicsViewer", package: "ComicsViewer")
             ],
             resources: [
                 // If your plugin requires a privacy manifest, for example if it uses any required

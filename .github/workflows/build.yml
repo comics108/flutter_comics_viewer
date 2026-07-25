@@ -1,0 +1,76 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*.*.*"]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Verify formatting
+        run: dart format --output=none --set-exit-if-changed .
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Run tests
+        run: flutter test
+
+      - name: Dry-run pub.dev publish validation
+        run: dart pub publish --dry-run
+
+  # The plugin's android/ module has no gradlew of its own (Flutter plugin
+  # scaffolding leaves native builds to the example app's tooling). Its
+  # settings.gradle.kts includes comics-viewer-android via a relative path
+  # (../../comics-viewer-android), so that sibling repo is checked out next
+  # to this one here to reproduce the monorepo layout. No Maven coordinate
+  # for it exists yet, so this is the only way to compile the native side.
+  build-android:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout flutter_comics_viewer
+        uses: actions/checkout@v4
+        with:
+          path: flutter_comics_viewer
+
+      - name: Checkout comics-viewer-android
+        uses: actions/checkout@v4
+        with:
+          repository: comics108/comics-viewer-android
+          path: comics-viewer-android
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: "17"
+
+      - name: Build example APK (exercises the plugin's Android module)
+        working-directory: flutter_comics_viewer/example
+        run: flutter build apk --debug
