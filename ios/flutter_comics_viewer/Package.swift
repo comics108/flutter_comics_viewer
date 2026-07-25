@@ -4,23 +4,32 @@
 import PackageDescription
 
 let package = Package(
-    name: "viewer",
+    // Must match the pubspec.yaml package name ("flutter_comics_viewer") —
+    // Flutter's generated FlutterGeneratedPluginSwiftPackage looks up this
+    // plugin by that name and expects a product named "<name>_<target>".
+    name: "flutter_comics_viewer",
     platforms: [
         .iOS("13.0")
     ],
     products: [
-        .library(name: "viewer", targets: ["viewer"])
+        .library(name: "flutter-comics-viewer", targets: ["viewer"])
     ],
     dependencies: [
         .package(name: "FlutterFramework", path: "../FlutterFramework"),
-        .package(name: "ComicsViewer", path: "../../../comics-viewer-ios")
+        // A local path dependency doesn't work here: Flutter stages this
+        // package's directory into example/ios/Flutter/ephemeral/ before
+        // resolving it, and a relative path pointing outside the plugin's
+        // own folder doesn't survive that staging step. A remote reference
+        // is what Flutter's local-SwiftPM plugin support actually expects
+        // for dependencies that live outside the plugin.
+        .package(url: "https://github.com/comics108/comics-viewer-ios.git", branch: "main")
     ],
     targets: [
         .target(
             name: "viewer",
             dependencies: [
                 .product(name: "FlutterFramework", package: "FlutterFramework"),
-                .product(name: "ComicsViewer", package: "ComicsViewer")
+                .product(name: "ComicsViewer", package: "comics-viewer-ios")
             ],
             resources: [
                 // If your plugin requires a privacy manifest, for example if it uses any required
