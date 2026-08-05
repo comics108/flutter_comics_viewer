@@ -9,6 +9,7 @@ import 'comics_viewer_controller.dart';
 import 'comics_viewer_source.dart';
 import 'dart_comics_viewer_backend.dart';
 import 'dart_comics_viewer_surface.dart';
+import 'windows_comics_viewer_surface.dart';
 
 /// A widget that displays interactive comics with animations and sound
 class ComicsViewer extends StatefulWidget {
@@ -143,6 +144,8 @@ class _ComicsViewerState extends State<ComicsViewer> {
           unawaited(widget.controller.attachView(viewId));
         },
       );
+    } else if (defaultTargetPlatform == TargetPlatform.windows) {
+      return WindowsComicsViewerSurface(controller: widget.controller);
     }
 
     final dartBackend = _dartBackend;

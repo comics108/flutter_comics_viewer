@@ -7,7 +7,7 @@ void main() {
   testWidgets('unsupported backend is typed state without diagnostic text', (
     tester,
   ) async {
-    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    debugDefaultTargetPlatformOverride = TargetPlatform.fuchsia;
     final controller = ComicsViewerController();
     await tester.pumpWidget(
       MaterialApp(

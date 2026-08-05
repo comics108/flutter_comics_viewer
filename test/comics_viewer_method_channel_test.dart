@@ -111,4 +111,52 @@ void main() {
     ]);
     await backend.dispose();
   });
+
+  test('Windows backend uses the viewer-only WPF host contract', () async {
+    final calls = <MethodCall>[];
+    const channel = MethodChannel('test_windows_viewer');
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      calls.add(call);
+      return call.method == 'getPosition'
+          ? '{"success":true,"position":0.25}'
+          : '{"success":true}';
+    });
+    addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
+    final backend = WindowsComicsViewerBackend(channel: channel)
+      ..setCallbacks(
+        onScrollChanged: (_) {},
+        onPlayingChanged: (_) {},
+        onError: (_) {},
+      );
+
+    await backend.create(
+      x: 10,
+      y: 20,
+      width: 640,
+      height: 480,
+      devicePixelRatio: 1.5,
+    );
+    await backend.load(const ComicsViewerPath(r'C:\preview.comics'));
+    await backend.setScrollPosition(.4);
+    await backend.setLanguageIndex(2);
+    await backend.setSoundEnabled(false);
+    await backend.togglePreview(true);
+    await backend.setVisible(false);
+    await backend.dispose();
+
+    expect(
+      calls.map((call) => call.method),
+      containsAllInOrder([
+        'create',
+        'load',
+        'setPosition',
+        'setLanguage',
+        'setSoundEnabled',
+        'setPreview',
+        'setVisible',
+        'dispose',
+      ]),
+    );
+    expect(calls.first.arguments, containsPair('devicePixelRatio', 1.5));
+  });
 }

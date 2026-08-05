@@ -12,7 +12,7 @@ let package = Package(
         .iOS("13.0")
     ],
     products: [
-        .library(name: "flutter-comics-viewer", targets: ["viewer"])
+        .library(name: "flutter-comics-viewer", targets: ["flutter_comics_viewer"])
     ],
     dependencies: [
         .package(name: "FlutterFramework", path: "../FlutterFramework"),
@@ -26,7 +26,7 @@ let package = Package(
     ],
     targets: [
         .target(
-            name: "viewer",
+            name: "flutter_comics_viewer",
             dependencies: [
                 .product(name: "FlutterFramework", package: "FlutterFramework"),
                 .product(name: "ComicsViewer", package: "comics-viewer-ios")
