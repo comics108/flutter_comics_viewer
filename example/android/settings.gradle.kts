@@ -24,3 +24,10 @@ plugins {
 }
 
 include(":app")
+
+// flutter_comics_viewer's Android module depends on this source project. The
+// plugin's own settings.gradle.kts is not evaluated when Flutter includes the
+// plugin in the example application's Gradle build, so the app must expose the
+// sibling project in its root build graph.
+include(":comics-viewer-android")
+project(":comics-viewer-android").projectDir = file("../../../comics-viewer-android")
