@@ -1,0 +1,14 @@
+{
+  "pins" : [
+    {
+      "identity" : "comics-viewer-ios",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/comics108/comics-viewer-ios.git",
+      "state" : {
+        "branch" : "main",
+        "revision" : "8337b59a0c31621530230efa02057dce9458243a"
+      }
+    }
+  ],
+  "version" : 2
+}

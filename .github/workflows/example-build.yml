@@ -104,8 +104,8 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Select Xcode 16
-        run: sudo xcode-select -s /Applications/Xcode_16.app
+      - name: Report runner Xcode
+        run: xcodebuild -version
 
       - name: Build unsigned iOS simulator app
         working-directory: example
