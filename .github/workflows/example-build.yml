@@ -1,0 +1,242 @@
+name: Example Build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*.*.*"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: 3.44.6
+
+jobs:
+  validate-example:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        working-directory: example
+        run: flutter pub get
+
+      - name: Verify formatting
+        working-directory: example
+        run: dart format --output=none --set-exit-if-changed lib test
+
+      - name: Analyze
+        working-directory: example
+        run: flutter analyze lib test
+
+      - name: Run unit and widget tests
+        working-directory: example
+        run: flutter test test
+
+  build-android:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout flutter_comics_viewer
+        uses: actions/checkout@v4
+        with:
+          path: flutter_comics_viewer
+
+      - name: Checkout comics-viewer-android
+        uses: actions/checkout@v4
+        with:
+          repository: comics108/comics-viewer-android
+          path: comics-viewer-android
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: "17"
+          cache: gradle
+          cache-dependency-path: |
+            flutter_comics_viewer/example/android/*.gradle*
+            flutter_comics_viewer/example/android/gradle/wrapper/gradle-wrapper.properties
+
+      - name: Build release APK
+        working-directory: flutter_comics_viewer/example
+        run: flutter build apk --release
+
+      - name: Upload Android APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: viewer-example-android-release-apk
+          path: flutter_comics_viewer/example/build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+          retention-days: 14
+
+  build-ios:
+    runs-on: macos-15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Select Xcode 16
+        run: sudo xcode-select -s /Applications/Xcode_16.app
+
+      - name: Build unsigned iOS simulator app
+        working-directory: example
+        run: flutter build ios --debug --no-codesign --simulator
+
+      - name: Archive iOS simulator app
+        working-directory: example
+        run: >-
+          ditto -c -k --sequesterRsrc --keepParent
+          build/ios/iphonesimulator/Runner.app
+          build/ios/iphonesimulator/viewer-example-ios-simulator-debug.zip
+
+      - name: Upload iOS simulator app
+        uses: actions/upload-artifact@v4
+        with:
+          name: viewer-example-ios-simulator-debug
+          path: example/build/ios/iphonesimulator/viewer-example-ios-simulator-debug.zip
+          if-no-files-found: error
+          retention-days: 14
+
+  build-linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Linux desktop build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Build Linux release bundle
+        working-directory: example
+        run: flutter build linux --release
+
+      - name: Upload Linux release bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: viewer-example-linux-x64-release
+          path: example/build/linux/x64/release/bundle/
+          if-no-files-found: error
+          retention-days: 14
+
+  build-macos:
+    runs-on: macos-15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Select Xcode 16
+        run: sudo xcode-select -s /Applications/Xcode_16.app
+
+      - name: Build macOS release app
+        working-directory: example
+        run: flutter build macos --release
+
+      - name: Archive macOS app
+        working-directory: example
+        run: >-
+          ditto -c -k --sequesterRsrc --keepParent
+          build/macos/Build/Products/Release/viewer_example.app
+          build/macos/Build/Products/Release/viewer-example-macos-release.zip
+
+      - name: Upload macOS release app
+        uses: actions/upload-artifact@v4
+        with:
+          name: viewer-example-macos-release
+          path: example/build/macos/Build/Products/Release/viewer-example-macos-release.zip
+          if-no-files-found: error
+          retention-days: 14
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Build Windows release bundle
+        working-directory: example
+        run: flutter build windows --release
+
+      - name: Upload Windows release bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: viewer-example-windows-x64-release
+          path: example/build/windows/x64/runner/Release/
+          if-no-files-found: error
+          retention-days: 14
+
+  build-web:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Build Web release bundle
+        working-directory: example
+        run: flutter build web --release
+
+      - name: Upload Web release bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: viewer-example-web-release
+          path: example/build/web/
+          if-no-files-found: error
+          retention-days: 14
