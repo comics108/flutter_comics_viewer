@@ -1,4 +1,3 @@
-
 import 'viewer_platform_interface.dart';
 
 class Viewer {

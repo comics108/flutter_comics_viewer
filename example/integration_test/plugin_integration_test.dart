@@ -6,19 +6,15 @@
 // For more information about Flutter integration tests, please see
 // https://flutter.dev/to/integration-testing
 
+import 'package:flutter_comics_viewer/flutter_comics_viewer.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
-
-import 'package:viewer/viewer.dart';
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('getPlatformVersion test', (WidgetTester tester) async {
-    final Viewer plugin = Viewer();
-    final String? version = await plugin.getPlatformVersion();
-    // The version string depends on the host platform running the test, so
-    // just assert that some non-empty string is returned.
-    expect(version?.isNotEmpty, true);
+  testWidgets('public viewer source API is available', (tester) async {
+    const source = ComicsViewerPath('/tmp/example.comics');
+    expect(source.revisionKey, source.path);
   });
 }

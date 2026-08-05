@@ -32,6 +32,7 @@ class ComicsViewerPlatformView(
     private var filePath: String? = null
     private var languageIndex: Int = 0
     private var soundEnabled: Boolean = true
+    private var muted: Boolean = false
 
     init {
         methodChannel.setMethodCallHandler(this)
@@ -80,8 +81,9 @@ class ComicsViewerPlatformView(
         when (call.method) {
             "loadComics" -> {
                 val path = call.argument<String>("filePath")
+                val requestId = call.argument<Int>("requestId")
                 if (path != null) {
-                    loadComics(path)
+                    loadComics(path, requestId)
                     result.success(null)
                 } else {
                     result.error("INVALID_ARGUMENT", "File path is required", null)
@@ -117,18 +119,28 @@ class ComicsViewerPlatformView(
                     result.error("INVALID_ARGUMENT", "Show flag is required", null)
                 }
             }
-            "toggleSounds" -> {
+            "setSoundEnabled" -> {
                 val enabled = call.argument<Boolean>("enabled")
                 if (enabled != null) {
-                    controller.toggleSounds(enabled)
                     soundEnabled = enabled
+                    applySoundState()
                     result.success(null)
                 } else {
                     result.error("INVALID_ARGUMENT", "Enabled flag is required", null)
                 }
             }
-            "setLanguage" -> {
-                val index = call.argument<Int>("languageIndex")
+            "setMuted" -> {
+                val value = call.argument<Boolean>("muted")
+                if (value != null) {
+                    muted = value
+                    applySoundState()
+                    result.success(null)
+                } else {
+                    result.error("INVALID_ARGUMENT", "Muted flag is required", null)
+                }
+            }
+            "setLanguageIndex" -> {
+                val index = call.argument<Int>("index")
                 if (index != null) {
                     controller.setLanguage(index)
                     languageIndex = index
@@ -150,14 +162,21 @@ class ComicsViewerPlatformView(
         }
     }
 
-    private fun loadComics(path: String) {
+    private fun applySoundState() {
+        controller.toggleSounds(soundEnabled && !muted)
+    }
+
+    private fun loadComics(path: String, requestId: Int? = null) {
         controller.loadComics(path, object : ComicsViewController.ComicsLoadListener {
             override fun onLoaded() {
-                methodChannel.invokeMethod("onLoaded", null)
+                methodChannel.invokeMethod("onLoaded", mapOf("requestId" to requestId))
             }
 
             override fun onError(error: String) {
-                methodChannel.invokeMethod("onError", mapOf("error" to error))
+                methodChannel.invokeMethod(
+                    "onError",
+                    mapOf("error" to error, "requestId" to requestId)
+                )
             }
         })
     }

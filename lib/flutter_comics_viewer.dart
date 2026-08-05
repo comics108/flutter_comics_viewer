@@ -1,5 +1,7 @@
-library flutter_comics_viewer;
-
 export 'src/comics_viewer.dart';
+export 'src/comics_viewer_backend.dart';
 export 'src/comics_viewer_controller.dart';
-export 'src/comics_viewer_platform_interface.dart';
+export 'src/comics_viewer_source.dart';
+export 'src/comics_viewer_state.dart';
+export 'src/dart_comics_viewer_backend.dart';
+export 'src/dart_comics_viewer_surface.dart';

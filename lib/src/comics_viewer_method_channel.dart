@@ -10,7 +10,9 @@ class MethodChannelComicsViewer extends ComicsViewerPlatform {
 
   @override
   Future<void> loadComics(String filePath) async {
-    await methodChannel.invokeMethod<void>('loadComics', {'filePath': filePath});
+    await methodChannel.invokeMethod<void>('loadComics', {
+      'filePath': filePath,
+    });
   }
 
   @override
@@ -25,23 +27,31 @@ class MethodChannelComicsViewer extends ComicsViewerPlatform {
 
   @override
   Future<void> setScrollPosition(double position) async {
-    await methodChannel.invokeMethod<void>('setScrollPosition', {'position': position});
+    await methodChannel.invokeMethod<void>('setScrollPosition', {
+      'position': position,
+    });
   }
 
   @override
   Future<double> getScrollPosition() async {
-    final position = await methodChannel.invokeMethod<double>('getScrollPosition');
+    final position = await methodChannel.invokeMethod<double>(
+      'getScrollPosition',
+    );
     return position ?? 0.0;
   }
 
   @override
   Future<void> setLanguageIndex(int index) async {
-    await methodChannel.invokeMethod<void>('setLanguageIndex', {'index': index});
+    await methodChannel.invokeMethod<void>('setLanguageIndex', {
+      'index': index,
+    });
   }
 
   @override
   Future<void> setSoundEnabled(bool enabled) async {
-    await methodChannel.invokeMethod<void>('setSoundEnabled', {'enabled': enabled});
+    await methodChannel.invokeMethod<void>('setSoundEnabled', {
+      'enabled': enabled,
+    });
   }
 
   @override
@@ -56,12 +66,16 @@ class MethodChannelComicsViewer extends ComicsViewerPlatform {
 
   @override
   Future<void> toggleSounds(bool enabled) async {
-    await methodChannel.invokeMethod<void>('toggleSounds', {'enabled': enabled});
+    await methodChannel.invokeMethod<void>('toggleSounds', {
+      'enabled': enabled,
+    });
   }
 
   @override
   Future<void> setLanguage(int languageIndex) async {
-    await methodChannel.invokeMethod<void>('setLanguage', {'languageIndex': languageIndex});
+    await methodChannel.invokeMethod<void>('setLanguage', {
+      'languageIndex': languageIndex,
+    });
   }
 
   @override
@@ -78,7 +92,9 @@ class MethodChannelComicsViewer extends ComicsViewerPlatform {
 
   @override
   Future<double> getCurrentPosition() async {
-    final position = await methodChannel.invokeMethod<double>('getCurrentPosition');
+    final position = await methodChannel.invokeMethod<double>(
+      'getCurrentPosition',
+    );
     return position ?? 0.0;
   }
 }

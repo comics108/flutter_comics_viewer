@@ -1,9 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'comics_viewer_controller.dart';
+import 'comics_viewer_source.dart';
+import 'dart_comics_viewer_backend.dart';
+import 'dart_comics_viewer_surface.dart';
 
 /// A widget that displays interactive comics with animations and sound
 class ComicsViewer extends StatefulWidget {
@@ -12,6 +17,9 @@ class ComicsViewer extends StatefulWidget {
 
   /// Initial comics file path
   final String? initialFilePath;
+
+  /// Initial path/bytes source. Takes precedence over [initialFilePath].
+  final ComicsViewerSource? source;
 
   /// Initial language index
   final int initialLanguageIndex;
@@ -26,6 +34,7 @@ class ComicsViewer extends StatefulWidget {
     super.key,
     required this.controller,
     this.initialFilePath,
+    this.source,
     this.initialLanguageIndex = 0,
     this.initialSoundEnabled = true,
     this.gestureRecognizers,
@@ -36,27 +45,50 @@ class ComicsViewer extends StatefulWidget {
 }
 
 class _ComicsViewerState extends State<ComicsViewer> {
+  bool _unsupportedMarked = false;
+  DartComicsViewerBackend? _dartBackend;
+
   @override
   void initState() {
     super.initState();
-    _initializeViewer();
-  }
-
-  Future<void> _initializeViewer() async {
-    // Set initial language and sound settings
-    await widget.controller.setLanguageIndex(widget.initialLanguageIndex);
-    await widget.controller.setSoundEnabled(widget.initialSoundEnabled);
-
-    // Load initial comics if provided
-    if (widget.initialFilePath != null) {
-      await widget.controller.loadComics(widget.initialFilePath!);
+    if (defaultTargetPlatform == TargetPlatform.macOS ||
+        defaultTargetPlatform == TargetPlatform.linux ||
+        kIsWeb) {
+      _dartBackend = DartComicsViewerBackend();
+      unawaited(widget.controller.attachBackend(_dartBackend!));
     }
+    unawaited(widget.controller.setLanguageIndex(widget.initialLanguageIndex));
+    unawaited(widget.controller.setSoundEnabled(widget.initialSoundEnabled));
+    final source =
+        widget.source ??
+        (widget.initialFilePath == null
+            ? null
+            : ComicsViewerPath(widget.initialFilePath!));
+    if (source != null) unawaited(widget.controller.load(source));
   }
 
   @override
   void dispose() {
-    widget.controller.dispose();
+    // The controller owns and disposes whichever backend is attached.
     super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(ComicsViewer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final previous =
+        oldWidget.source ??
+        (oldWidget.initialFilePath == null
+            ? null
+            : ComicsViewerPath(oldWidget.initialFilePath!));
+    final next =
+        widget.source ??
+        (widget.initialFilePath == null
+            ? null
+            : ComicsViewerPath(widget.initialFilePath!));
+    if (next != null && previous?.revisionKey != next.revisionKey) {
+      unawaited(widget.controller.load(next));
+    }
   }
 
   @override
@@ -70,26 +102,30 @@ class _ComicsViewerState extends State<ComicsViewer> {
         surfaceFactory: (context, controller) {
           return AndroidViewSurface(
             controller: controller as AndroidViewController,
-            gestureRecognizers: widget.gestureRecognizers ?? const <Factory<OneSequenceGestureRecognizer>>{},
+            gestureRecognizers:
+                widget.gestureRecognizers ??
+                const <Factory<OneSequenceGestureRecognizer>>{},
             hitTestBehavior: PlatformViewHitTestBehavior.opaque,
           );
         },
         onCreatePlatformView: (params) {
           return PlatformViewsService.initSurfaceAndroidView(
-            id: params.id,
-            viewType: viewType,
-            layoutDirection: TextDirection.ltr,
-            creationParams: <String, dynamic>{
-              'filePath': widget.initialFilePath,
-              'languageIndex': widget.initialLanguageIndex,
-              'soundEnabled': widget.initialSoundEnabled,
-            },
-            creationParamsCodec: const StandardMessageCodec(),
-            onFocus: () {
-              params.onFocusChanged(true);
-            },
-          )
-            ..addOnPlatformViewCreatedListener(params.onPlatformViewCreated)
+              id: params.id,
+              viewType: viewType,
+              layoutDirection: TextDirection.ltr,
+              creationParams: <String, dynamic>{
+                'languageIndex': widget.initialLanguageIndex,
+                'soundEnabled': widget.initialSoundEnabled,
+              },
+              creationParamsCodec: const StandardMessageCodec(),
+              onFocus: () {
+                params.onFocusChanged(true);
+              },
+            )
+            ..addOnPlatformViewCreatedListener((viewId) {
+              params.onPlatformViewCreated(viewId);
+              unawaited(widget.controller.attachView(viewId));
+            })
             ..create();
         },
       );
@@ -98,20 +134,30 @@ class _ComicsViewerState extends State<ComicsViewer> {
         viewType: viewType,
         layoutDirection: TextDirection.ltr,
         creationParams: <String, dynamic>{
-          'filePath': widget.initialFilePath,
           'languageIndex': widget.initialLanguageIndex,
           'soundEnabled': widget.initialSoundEnabled,
         },
         creationParamsCodec: const StandardMessageCodec(),
         gestureRecognizers: widget.gestureRecognizers,
+        onPlatformViewCreated: (viewId) {
+          unawaited(widget.controller.attachView(viewId));
+        },
       );
     }
 
-    return Center(
-      child: Text(
-        'ComicsViewer is not supported on ${defaultTargetPlatform.name}',
-        style: const TextStyle(color: Colors.red),
-      ),
-    );
+    final dartBackend = _dartBackend;
+    if (dartBackend != null) {
+      return DartComicsViewerSurface(backend: dartBackend);
+    }
+
+    if (!_unsupportedMarked) {
+      _unsupportedMarked = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        widget.controller.markUnsupported(
+          'ComicsViewer is not supported on ${defaultTargetPlatform.name}',
+        );
+      });
+    }
+    return const SizedBox.expand();
   }
 }

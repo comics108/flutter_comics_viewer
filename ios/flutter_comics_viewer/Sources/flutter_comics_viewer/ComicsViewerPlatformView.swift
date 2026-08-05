@@ -11,6 +11,7 @@ class ComicsViewerPlatformView: NSObject, FlutterPlatformView {
     private var filePath: String?
     private var languageIndex: Int = 0
     private var soundEnabled: Bool = true
+    private var muted: Bool = false
 
     init(
         frame: CGRect,
@@ -81,7 +82,7 @@ class ComicsViewerPlatformView: NSObject, FlutterPlatformView {
                 result(FlutterError(code: "INVALID_ARGUMENT", message: "File path is required", details: nil))
                 return
             }
-            loadComics(path: path)
+            loadComics(path: path, requestId: args["requestId"] as? Int)
             result(nil)
 
         case "play":
@@ -114,19 +115,29 @@ class ComicsViewerPlatformView: NSObject, FlutterPlatformView {
             controller.togglePreview(show)
             result(nil)
 
-        case "toggleSounds":
+        case "setSoundEnabled":
             guard let args = call.arguments as? [String: Any],
                   let enabled = args["enabled"] as? Bool else {
                 result(FlutterError(code: "INVALID_ARGUMENT", message: "Enabled flag is required", details: nil))
                 return
             }
-            controller.toggleSounds(enabled)
             soundEnabled = enabled
+            applySoundState()
             result(nil)
 
-        case "setLanguage":
+        case "setMuted":
             guard let args = call.arguments as? [String: Any],
-                  let index = args["languageIndex"] as? Int else {
+                  let value = args["muted"] as? Bool else {
+                result(FlutterError(code: "INVALID_ARGUMENT", message: "Muted flag is required", details: nil))
+                return
+            }
+            muted = value
+            applySoundState()
+            result(nil)
+
+        case "setLanguageIndex":
+            guard let args = call.arguments as? [String: Any],
+                  let index = args["index"] as? Int else {
                 result(FlutterError(code: "INVALID_ARGUMENT", message: "Language index is required", details: nil))
                 return
             }
@@ -148,13 +159,20 @@ class ComicsViewerPlatformView: NSObject, FlutterPlatformView {
         }
     }
 
-    private func loadComics(path: String) {
+    private func applySoundState() {
+        controller.toggleSounds(soundEnabled && !muted)
+    }
+
+    private func loadComics(path: String, requestId: Int? = nil) {
         controller.loadComics(filePath: path) { [weak self] result in
             switch result {
             case .success:
-                self?.methodChannel.invokeMethod("onLoaded", arguments: nil)
+                self?.methodChannel.invokeMethod("onLoaded", arguments: ["requestId": requestId as Any])
             case .failure(let error):
-                self?.methodChannel.invokeMethod("onError", arguments: ["error": error.localizedDescription])
+                self?.methodChannel.invokeMethod(
+                    "onError",
+                    arguments: ["error": error.localizedDescription, "requestId": requestId as Any]
+                )
             }
         }
     }

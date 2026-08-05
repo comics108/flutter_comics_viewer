@@ -1,179 +1,180 @@
-import 'package:flutter/services.dart';
-import 'comics_viewer_platform_interface.dart';
+import 'dart:async';
 
-/// Controller for managing ComicsViewer state and interactions
-class ComicsViewerController {
-  final ComicsViewerPlatform _platform = ComicsViewerPlatform.instance;
+import 'package:flutter/foundation.dart';
 
-  /// Callback for scroll position changes
-  Function(double position)? onScrollChanged;
+import 'comics_viewer_backend.dart';
+import 'comics_viewer_source.dart';
+import 'comics_viewer_state.dart';
 
-  /// Callback when comics are loaded
-  Function()? onLoaded;
+/// State and commands for exactly one [ComicsViewer] renderer instance.
+class ComicsViewerController extends ChangeNotifier {
+  ComicsViewerController({ComicsViewerBackendFactory? backendFactory})
+    : _backendFactory = backendFactory ?? MethodChannelComicsViewerBackend.new;
 
-  /// Callback for errors
-  Function(String error)? onError;
-
-  /// Current language index
+  static const double _echoTolerance = 1e-4;
+  final ComicsViewerBackendFactory _backendFactory;
+  ComicsViewerBackend? _backend;
+  ComicsViewerState _state = const ComicsViewerState();
+  ComicsViewerSource? _source;
+  Object? _loadToken;
+  double? _lastSentPosition;
   int _languageIndex = 0;
-  int get languageIndex => _languageIndex;
-
-  /// Whether sound is enabled
   bool _soundEnabled = true;
-  bool get soundEnabled => _soundEnabled;
-
-  /// Whether sound is muted
   bool _muted = false;
+  bool _preview = false;
+  bool _disposed = false;
+
+  ComicsViewerState get state => _state;
+  ComicsViewerSource? get source => _source;
+  int get languageIndex => _languageIndex;
+  bool get soundEnabled => _soundEnabled;
   bool get muted => _muted;
+  bool get preview => _preview;
+  bool get isAttached => _backend != null;
 
-  /// Load comics from a file path
-  Future<void> loadComics(String filePath) async {
+  /// Called once the concrete PlatformView/backend instance exists.
+  Future<void> attachView(int viewId) async {
+    if (_disposed) return;
+    await attachBackend(_backendFactory(viewId));
+  }
+
+  /// Attaches an instance-owned non-PlatformView renderer.
+  Future<void> attachBackend(ComicsViewerBackend backend) async {
+    if (_disposed) return;
+    await _backend?.dispose();
+    _backend = backend;
+    backend.setCallbacks(
+      onScrollChanged: _handleBackendPosition,
+      onPlayingChanged: (playing) =>
+          _setState(_state.copyWith(playing: playing)),
+      onError: _handleBackendError,
+    );
+    await backend.setLanguageIndex(_languageIndex);
+    await backend.setSoundEnabled(_soundEnabled);
+    await backend.setMuted(_muted);
+    await backend.togglePreview(_preview);
+    final pending = _source;
+    if (pending != null) await _loadAttached(pending);
+  }
+
+  void markUnsupported([String? reason]) {
+    _setState(
+      ComicsViewerState(
+        phase: ComicsViewerPhase.unsupported,
+        position: _state.position,
+        error: reason,
+      ),
+    );
+  }
+
+  Future<void> load(ComicsViewerSource source) async {
+    _source = source;
+    final token = Object();
+    _loadToken = token;
+    _setState(
+      _state.copyWith(phase: ComicsViewerPhase.loading, clearError: true),
+    );
+    if (_backend == null) return;
+    await _loadAttached(source, token: token);
+  }
+
+  Future<void> _loadAttached(ComicsViewerSource source, {Object? token}) async {
+    final currentToken = token ?? Object();
+    _loadToken = currentToken;
     try {
-      await _platform.loadComics(filePath);
-      onLoaded?.call();
-    } catch (e) {
-      onError?.call(e.toString());
-      rethrow;
+      await _backend!.load(source);
+      if (_disposed || !identical(_loadToken, currentToken)) return;
+      _setState(
+        _state.copyWith(phase: ComicsViewerPhase.loaded, clearError: true),
+      );
+    } catch (error) {
+      if (_disposed || !identical(_loadToken, currentToken)) return;
+      _handleBackendError(error.toString());
     }
   }
 
-  /// Start playing animations and sounds
   Future<void> play() async {
-    try {
-      await _platform.play();
-    } catch (e) {
-      onError?.call(e.toString());
-      rethrow;
-    }
+    await _requireBackend().play();
+    _setState(_state.copyWith(playing: true));
   }
 
-  /// Pause animations and sounds
   Future<void> pause() async {
-    try {
-      await _platform.pause();
-    } catch (e) {
-      onError?.call(e.toString());
-      rethrow;
-    }
+    await _requireBackend().pause();
+    _setState(_state.copyWith(playing: false));
   }
 
-  /// Set scroll position (normalized 0.0 to 1.0)
   Future<void> setScrollPosition(double position) async {
-    try {
-      await _platform.setScrollPosition(position);
-    } catch (e) {
-      onError?.call(e.toString());
-      rethrow;
+    if (!position.isFinite) {
+      throw ArgumentError.value(position, 'position', 'must be finite');
     }
+    final normalized = position.clamp(0.0, 1.0);
+    _lastSentPosition = normalized;
+    _setState(_state.copyWith(position: normalized));
+    await _requireBackend().setScrollPosition(normalized);
   }
 
-  /// Get current scroll position
-  Future<double> getScrollPosition() async {
-    try {
-      return await _platform.getScrollPosition();
-    } catch (e) {
-      onError?.call(e.toString());
-      rethrow;
+  void _handleBackendPosition(double position) {
+    if (!position.isFinite) return;
+    final normalized = position.clamp(0.0, 1.0);
+    final sent = _lastSentPosition;
+    if (sent != null && (normalized - sent).abs() <= _echoTolerance) {
+      _lastSentPosition = null;
+      return;
     }
+    _lastSentPosition = null;
+    _setState(_state.copyWith(position: normalized));
   }
 
-  /// Set language index (0-based)
   Future<void> setLanguageIndex(int index) async {
-    try {
-      _languageIndex = index;
-      await _platform.setLanguageIndex(index);
-    } catch (e) {
-      onError?.call(e.toString());
-      rethrow;
-    }
+    if (index < 0) throw ArgumentError.value(index, 'index');
+    _languageIndex = index;
+    if (_backend case final backend?) await backend.setLanguageIndex(index);
   }
 
-  /// Enable or disable sound playback
   Future<void> setSoundEnabled(bool enabled) async {
-    try {
-      _soundEnabled = enabled;
-      await _platform.setSoundEnabled(enabled);
-    } catch (e) {
-      onError?.call(e.toString());
-      rethrow;
-    }
+    _soundEnabled = enabled;
+    if (_backend case final backend?) await backend.setSoundEnabled(enabled);
   }
 
-  /// Mute or unmute sound
   Future<void> setMuted(bool muted) async {
-    try {
-      _muted = muted;
-      await _platform.setMuted(muted);
-    } catch (e) {
-      onError?.call(e.toString());
-      rethrow;
-    }
+    _muted = muted;
+    if (_backend case final backend?) await backend.setMuted(muted);
   }
 
-  /// Toggle preview layers visibility
   Future<void> togglePreview(bool show) async {
-    try {
-      await _platform.togglePreview(show);
-    } catch (e) {
-      onError?.call(e.toString());
-      rethrow;
-    }
+    _preview = show;
+    if (_backend case final backend?) await backend.togglePreview(show);
   }
 
-  /// Toggle sound playback
-  Future<void> toggleSounds(bool enabled) async {
-    try {
-      _soundEnabled = enabled;
-      await _platform.toggleSounds(enabled);
-    } catch (e) {
-      onError?.call(e.toString());
-      rethrow;
-    }
+  ComicsViewerBackend _requireBackend() {
+    final backend = _backend;
+    if (backend == null) throw StateError('ComicsViewer is not attached');
+    return backend;
   }
 
-  /// Set language (0-based index)
-  Future<void> setLanguage(int languageIndex) async {
-    try {
-      _languageIndex = languageIndex;
-      await _platform.setLanguage(languageIndex);
-    } catch (e) {
-      onError?.call(e.toString());
-      rethrow;
-    }
+  void _handleBackendError(String message) {
+    _setState(
+      _state.copyWith(
+        phase: ComicsViewerPhase.error,
+        error: message,
+        playing: false,
+      ),
+    );
   }
 
-  /// Check if currently playing
-  Future<bool> get isPlaying async {
-    try {
-      return await _platform.isPlaying();
-    } catch (e) {
-      onError?.call(e.toString());
-      rethrow;
-    }
+  void _setState(ComicsViewerState next) {
+    if (_disposed) return;
+    _state = next;
+    notifyListeners();
   }
 
-  /// Get total scrollable height/duration
-  Future<double> get duration async {
-    try {
-      return await _platform.getDuration();
-    } catch (e) {
-      onError?.call(e.toString());
-      rethrow;
-    }
-  }
-
-  /// Get current position
-  Future<double> get currentPosition async {
-    try {
-      return await _platform.getCurrentPosition();
-    } catch (e) {
-      onError?.call(e.toString());
-      rethrow;
-    }
-  }
-
-  /// Dispose resources
+  @override
   void dispose() {
-    // Clean up resources if needed
+    if (_disposed) return;
+    _disposed = true;
+    _loadToken = null;
+    unawaited(_backend?.dispose());
+    _backend = null;
+    super.dispose();
   }
 }
