@@ -32,6 +32,10 @@ class ComicsViewerController extends ChangeNotifier {
   bool get preview => _preview;
   bool get isAttached => _backend != null;
 
+  /// The instance-owned renderer, exposed for a platform surface to reuse
+  /// across temporary widget removal (for example Editor/Viewer switching).
+  ComicsViewerBackend? get attachedBackend => _backend;
+
   /// Called once the concrete PlatformView/backend instance exists.
   Future<void> attachView(int viewId) async {
     if (_disposed) return;

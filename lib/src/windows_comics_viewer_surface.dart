@@ -18,11 +18,22 @@ class WindowsComicsViewerSurface extends StatefulWidget {
 
 class _WindowsComicsViewerSurfaceState
     extends State<WindowsComicsViewerSurface> {
-  final WindowsComicsViewerBackend _backend = WindowsComicsViewerBackend();
+  late final WindowsComicsViewerBackend _backend;
+  late final bool _needsAttach;
   Rect? _lastBounds;
   double? _lastDpr;
   bool _created = false;
   bool _scheduled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final attached = widget.controller.attachedBackend;
+    _needsAttach = attached is! WindowsComicsViewerBackend;
+    _backend = attached is WindowsComicsViewerBackend
+        ? attached
+        : WindowsComicsViewerBackend();
+  }
 
   void _scheduleLayout() {
     if (_scheduled) return;
@@ -49,7 +60,7 @@ class _WindowsComicsViewerSurfaceState
           );
           if (!mounted) return;
           _created = true;
-          await widget.controller.attachBackend(_backend);
+          if (_needsAttach) await widget.controller.attachBackend(_backend);
         } else {
           await _backend.setBounds(
             x: bounds.left,

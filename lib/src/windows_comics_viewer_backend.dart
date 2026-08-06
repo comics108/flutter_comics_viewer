@@ -17,6 +17,8 @@ final class WindowsComicsViewerBackend implements ComicsViewerBackend {
   void Function(bool)? _onPlayingChanged;
   void Function(String)? _onError;
   bool _disposed = false;
+  bool _soundEnabled = true;
+  bool _muted = false;
 
   Future<Map<String, dynamic>> invoke(
     String method, [
@@ -124,12 +126,19 @@ final class WindowsComicsViewerBackend implements ComicsViewerBackend {
       invoke('setLanguage', {'index': index});
 
   @override
-  Future<void> setSoundEnabled(bool enabled) =>
-      invoke('setSoundEnabled', {'enabled': enabled});
+  Future<void> setSoundEnabled(bool enabled) {
+    _soundEnabled = enabled;
+    return _applySound();
+  }
 
   @override
-  Future<void> setMuted(bool muted) =>
-      invoke('setSoundEnabled', {'enabled': !muted});
+  Future<void> setMuted(bool muted) {
+    _muted = muted;
+    return _applySound();
+  }
+
+  Future<void> _applySound() =>
+      invoke('setSoundEnabled', {'enabled': _soundEnabled && !_muted});
 
   @override
   Future<void> togglePreview(bool show) => invoke('setPreview', {'show': show});

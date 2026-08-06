@@ -5,8 +5,10 @@ import ComicsViewer
 public class FlutterComicsViewerPlugin: NSObject, FlutterPlugin {
     public static func register(with registrar: FlutterPluginRegistrar) {
         let channel = FlutterMethodChannel(name: "flutter_comics_viewer", binaryMessenger: registrar.messenger())
+        let legacyChannel = FlutterMethodChannel(name: "viewer", binaryMessenger: registrar.messenger())
         let instance = FlutterComicsViewerPlugin()
         registrar.addMethodCallDelegate(instance, channel: channel)
+        registrar.addMethodCallDelegate(instance, channel: legacyChannel)
 
         // Register platform view factory
         let factory = ComicsViewerFactory(messenger: registrar.messenger())
