@@ -2,6 +2,13 @@ name: flutter_comics_viewer
 description: "Flutter plugin for rendering interactive comics and puzzles with animations and sound."
 version: 1.0.0
 homepage: https://nativemind.net
+# flows/sdd-flutter-comics Plan Task 5.1: this package now has a local
+# `path:` dependency on `flutter_comics` (not yet published itself), which
+# pub.dev disallows for a publishable package. Disclosed consequence, not
+# silently worked around: this package can't be published to pub.dev again
+# until `flutter_comics` is either published too or this path dependency
+# is swapped for a hosted/git one at publish time.
+publish_to: 'none'
 
 environment:
   sdk: ^3.12.2
@@ -11,6 +18,7 @@ dependencies:
   archive: ^4.0.9
   flutter:
     sdk: flutter
+    flutter_comics: ^0.1.0+2
   flutter_web_plugins:
     sdk: flutter
   web: ^1.0.0

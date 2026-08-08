@@ -1,45 +1,20 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:math' as math;
 
 import 'package:archive/archive.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_comics/flutter_comics.dart';
 
 import 'comics_viewer_backend.dart';
 import 'comics_viewer_source.dart';
 import 'source_bytes.dart';
 
-enum DartViewerAnimType { translate, rotate, scale, alpha, sound }
-
-@immutable
-class DartViewerAnim {
-  const DartViewerAnim({
-    required this.type,
-    required this.start,
-    required this.end,
-    this.x = 0,
-    this.y = 0,
-    this.angle = 0,
-    this.scaleX = 1,
-    this.scaleY = 1,
-    this.pivotX = .5,
-    this.pivotY = .5,
-    this.alpha = 1,
-  });
-
-  final DartViewerAnimType type;
-  final double start;
-  final double end;
-  final double x;
-  final double y;
-  final double angle;
-  final double scaleX;
-  final double scaleY;
-  final double pivotX;
-  final double pivotY;
-  final double alpha;
-}
-
+/// flows/sdd-flutter-comics Plan Task 5.2: real tile pixel bytes for one
+/// layer's image slot -- unlike `DartViewerAnim`/`DartViewerLayer` (deleted
+/// below, since they duplicated the shared model's `Anim`/`EditorLayer`
+/// and `KeyframeInterpolator`'s own math), tile bytes have no shared-model
+/// equivalent at all (`EditorLayer.images` only ever holds a `file` path
+/// string, never pixel data) -- this stays exactly as it was.
 @immutable
 class DartViewerTile {
   const DartViewerTile(this.bytes, this.left, this.top);
@@ -48,119 +23,25 @@ class DartViewerTile {
   final double top;
 }
 
+/// flows/sdd-flutter-comics Plan Task 5.2: one renderable layer -- real
+/// tile bytes + box size (neither exists on the shared model, per
+/// [DartViewerTile]'s own doc comment) plus a direct reference to the
+/// shared [EditorLayer] itself, so the surface can call
+/// [KeyframeInterpolator] directly on `editorLayer.anims` instead of a
+/// second, duplicate interpolation implementation.
 @immutable
-class DartViewerLayer {
-  const DartViewerLayer({
+class RenderedLayer {
+  const RenderedLayer({
+    required this.editorLayer,
     required this.width,
     required this.height,
     required this.tiles,
-    required this.animations,
-    required this.preview,
   });
 
+  final EditorLayer editorLayer;
   final double width;
   final double height;
   final List<DartViewerTile> tiles;
-  final List<DartViewerAnim> animations;
-  final bool preview;
-
-  ({double x, double y}) translateAt(double time) {
-    final pair = _nearest(DartViewerAnimType.translate, time);
-    if (pair.$1 == null && pair.$2 == null) return (x: 0, y: 0);
-    final previous = pair.$1;
-    final current = pair.$2;
-    final px = previous?.x ?? 0;
-    final py = previous?.y ?? 0;
-    if (current == null) return (x: px, y: py);
-    final factor = _factor(current, time);
-    return (
-      x: px + (current.x - px) * factor,
-      y: py + (current.y - py) * factor,
-    );
-  }
-
-  ({double x, double y, double pivotX, double pivotY}) scaleAt(double time) {
-    final pair = _nearest(DartViewerAnimType.scale, time);
-    final previous = pair.$1;
-    final current = pair.$2;
-    final px = previous?.scaleX ?? 1;
-    final py = previous?.scaleY ?? 1;
-    if (current == null) {
-      return (
-        x: px,
-        y: py,
-        pivotX: previous?.pivotX ?? .5,
-        pivotY: previous?.pivotY ?? .5,
-      );
-    }
-    final factor = _factor(current, time);
-    return (
-      x: px + (current.scaleX - px) * factor,
-      y: py + (current.scaleY - py) * factor,
-      pivotX: current.pivotX,
-      pivotY: current.pivotY,
-    );
-  }
-
-  ({double angle, double pivotX, double pivotY}) rotateAt(double time) {
-    final pair = _nearest(DartViewerAnimType.rotate, time);
-    final previous = pair.$1;
-    final current = pair.$2;
-    final angle = previous?.angle ?? 0;
-    if (current == null) {
-      return (
-        angle: angle,
-        pivotX: previous?.pivotX ?? .5,
-        pivotY: previous?.pivotY ?? .5,
-      );
-    }
-    return (
-      angle: angle + (current.angle - angle) * _factor(current, time),
-      pivotX: current.pivotX,
-      pivotY: current.pivotY,
-    );
-  }
-
-  double alphaAt(double time) {
-    final pair = _nearest(DartViewerAnimType.alpha, time);
-    final previous = pair.$1;
-    final current = pair.$2;
-    final alpha = previous?.alpha ?? 1;
-    if (current == null) return alpha;
-    return alpha + (current.alpha - alpha) * _factor(current, time);
-  }
-
-  (DartViewerAnim?, DartViewerAnim?) _nearest(
-    DartViewerAnimType type,
-    double time,
-  ) {
-    final values =
-        <(int, DartViewerAnim)>[
-          for (var i = 0; i < animations.length; i++)
-            if (animations[i].type == type) (i, animations[i]),
-        ]..sort((a, b) {
-          final byStart = a.$2.start.compareTo(b.$2.start);
-          return byStart == 0 ? a.$1.compareTo(b.$1) : byStart;
-        });
-    DartViewerAnim? previous;
-    DartViewerAnim? current;
-    for (final entry in values) {
-      final animation = entry.$2;
-      if (animation.end <= time) {
-        previous = animation;
-      } else {
-        if (animation.start < time) current = animation;
-        break;
-      }
-    }
-    return (previous, current);
-  }
-
-  double _factor(DartViewerAnim animation, double time) {
-    if (animation.end == animation.start) return 1;
-    final t = (time - animation.start) / (animation.end - animation.start);
-    return math.pow(t - 1, 3).toDouble() + 1;
-  }
 }
 
 @immutable
@@ -172,10 +53,27 @@ class DartComicsDocument {
   });
   final double width;
   final double height;
-  final List<DartViewerLayer> layers;
+  final List<RenderedLayer> layers;
 }
 
 /// Archive renderer used by macOS/Linux and by Web for byte sources.
+///
+/// flows/sdd-flutter-comics Plan Task 5.2: `_rebuild` now sources every
+/// layer's structure (images/anims/preview/kind/etc.) from a real, shared
+/// [ComicsDoc] (via [ComicsArchiveReader.readBytes] -- the same portable
+/// reader `apps/comics-editor` doesn't even need, since it goes through
+/// the native core, but this package always lacked entirely) instead of
+/// this file's own, now-deleted `DartViewerAnimType`/`DartViewerAnim`/
+/// `DartViewerLayer`/`_parseAnimation` -- those silently dropped every
+/// schema field added since this file was last touched (`solidColor`/
+/// `mask`/`kind`/`style`/`parentId`/`groupId`/`scrollType`/
+/// `preferredOrientation`/`preferredViewportWidth`/`Height`/`Anim.basis`),
+/// the exact real drift this whole flow exists to fix. `EditorLayer`/
+/// `LayerImage` don't carry per-image pixel `width`/`height` (a
+/// pre-existing, disclosed gap in the shared model itself, not something
+/// this flow's scope covers) -- retained via [_raw], the same lightweight
+/// local JSON peek this file already needed for real ZIP/tile access, now
+/// narrowed to just that one field.
 final class DartComicsViewerBackend extends ChangeNotifier
     implements ComicsViewerBackend {
   void Function(double)? _onScrollChanged;
@@ -183,6 +81,7 @@ final class DartComicsViewerBackend extends ChangeNotifier
   void Function(String)? _onError;
   Archive? _archive;
   Map<String, dynamic>? _raw;
+  ComicsDoc? _comicsDoc;
   Timer? _timer;
   int _languageIndex = 0;
   bool _showPreview = false;
@@ -215,13 +114,22 @@ final class DartComicsViewerBackend extends ChangeNotifier
       if (data == null) throw const FormatException('Archive has no data.json');
       final jsonBytes = _contentBytes(data);
       var text = utf8.decode(jsonBytes);
-      if (text.startsWith('\ufeff')) text = text.substring(1);
+      if (text.startsWith('﻿')) text = text.substring(1);
       final raw = jsonDecode(text);
       if (raw is! Map<String, dynamic>) {
         throw const FormatException('data.json must contain an object');
       }
+      // The shared, schema-complete model -- real per-field parsing
+      // (solidColor/mask/kind/groupId/textRegion/Anim.basis/etc.), not
+      // this file's own deleted duplicate. Re-decodes [bytes] a second
+      // time (ComicsArchiveReader has no "already-decoded" entry point,
+      // and this package's Specifications didn't call for adding one) --
+      // a one-time load, not a hot path, so the redundant unzip is a
+      // deliberate, disclosed, low-risk simplicity trade-off.
+      final comicsDoc = await ComicsArchiveReader.readBytes(bytes);
       _archive = archive;
       _raw = raw;
+      _comicsDoc = comicsDoc;
       _rebuild();
     } catch (error) {
       _onError?.call(error.toString());
@@ -231,26 +139,40 @@ final class DartComicsViewerBackend extends ChangeNotifier
 
   void _rebuild() {
     final archive = _archive!;
-    final raw = _raw!;
-    final layers = <DartViewerLayer>[];
-    for (final value in (raw['layers'] as List? ?? const [])) {
-      final layer = Map<String, dynamic>.from(value as Map);
-      final preview = layer['preview'] == true;
-      if (preview && !_showPreview) continue;
-      final images = layer['images'] as List? ?? const [];
-      Map<String, dynamic>? image;
-      if (_languageIndex < images.length && images[_languageIndex] is Map) {
-        image = Map<String, dynamic>.from(images[_languageIndex] as Map);
+    final comicsDoc = _comicsDoc!;
+    final rawLayersJson = (_raw!['layers'] as List? ?? const []);
+    final layers = <RenderedLayer>[];
+    for (var i = 0; i < comicsDoc.layers.length; i++) {
+      final editorLayer = comicsDoc.layers[i];
+      if (editorLayer.preview && !_showPreview) continue;
+
+      final images = editorLayer.images;
+      LayerImage? image = _languageIndex < images.length ? images[_languageIndex] : null;
+      if (image == null || image.file.isEmpty) {
+        image = images.isNotEmpty ? images.first : null;
       }
-      if (image == null || (image['file'] as String? ?? '').isEmpty) {
-        if (images.isNotEmpty && images.first is Map) {
-          image = Map<String, dynamic>.from(images.first as Map);
+      final file = image?.file ?? '';
+      if (file.isEmpty) continue;
+
+      // EditorLayer/LayerImage carry no pixel width/height (disclosed gap,
+      // see this class's own doc comment) -- read from the parallel raw
+      // JSON layer at the same index (guaranteed to correspond 1:1: both
+      // this list and ComicsArchiveReader's own iterate raw['layers'] in
+      // original order, unfiltered).
+      final rawLayer = i < rawLayersJson.length ? rawLayersJson[i] as Map : const {};
+      final rawImages = rawLayer['images'] as List? ?? const [];
+      Map<String, dynamic>? rawImage =
+          _languageIndex < rawImages.length && rawImages[_languageIndex] is Map
+              ? Map<String, dynamic>.from(rawImages[_languageIndex] as Map)
+              : null;
+      if (rawImage == null || (rawImage['file'] as String? ?? '').isEmpty) {
+        if (rawImages.isNotEmpty && rawImages.first is Map) {
+          rawImage = Map<String, dynamic>.from(rawImages.first as Map);
         }
       }
-      final file = image?['file'] as String? ?? '';
-      if (file.isEmpty) continue;
-      final width = (image?['width'] as num?)?.toDouble() ?? 0;
-      final height = (image?['height'] as num?)?.toDouble() ?? 0;
+      final width = (rawImage?['width'] as num?)?.toDouble() ?? 0;
+      final height = (rawImage?['height'] as num?)?.toDouble() ?? 0;
+
       final tiles = <DartViewerTile>[];
       if (file.contains('{0}') && width > 0 && height > 0) {
         final columns = (width / 512).ceil();
@@ -263,9 +185,7 @@ final class DartComicsViewerBackend extends ChangeNotifier
                 .replaceFirst('{2}', '$row');
             final tile = archive.findFile('layers/$name');
             if (tile != null) {
-              tiles.add(
-                DartViewerTile(_contentBytes(tile), column * 512, row * 512),
-              );
+              tiles.add(DartViewerTile(_contentBytes(tile), column * 512, row * 512));
             }
           }
         }
@@ -276,53 +196,15 @@ final class DartComicsViewerBackend extends ChangeNotifier
         }
       }
       if (tiles.isEmpty) continue;
-      layers.add(
-        DartViewerLayer(
-          width: width,
-          height: height,
-          tiles: tiles,
-          animations: [
-            for (final animation in (layer['animations'] as List? ?? const []))
-              _parseAnimation(Map<String, dynamic>.from(animation as Map)),
-          ],
-          preview: preview,
-        ),
-      );
+
+      layers.add(RenderedLayer(editorLayer: editorLayer, width: width, height: height, tiles: tiles));
     }
     document = DartComicsDocument(
-      width: (raw['width'] as num?)?.toDouble() ?? 1080,
-      height: (raw['height'] as num?)?.toDouble() ?? 1920,
+      width: comicsDoc.width.toDouble(),
+      height: comicsDoc.height.toDouble(),
       layers: layers,
     );
     notifyListeners();
-  }
-
-  DartViewerAnim _parseAnimation(Map<String, dynamic> raw) {
-    final typeName = raw[r'$type']?.toString() ?? '';
-    final type = typeName.contains('Rotate')
-        ? DartViewerAnimType.rotate
-        : typeName.contains('Scale')
-        ? DartViewerAnimType.scale
-        : typeName.contains('Alpha')
-        ? DartViewerAnimType.alpha
-        : typeName.contains('Sound')
-        ? DartViewerAnimType.sound
-        : DartViewerAnimType.translate;
-    double number(String key, [double fallback = 0]) =>
-        (raw[key] as num?)?.toDouble() ?? fallback;
-    return DartViewerAnim(
-      type: type,
-      start: number('start'),
-      end: number('end'),
-      x: number('x'),
-      y: number('y'),
-      angle: number('angle'),
-      scaleX: number('scaleX', 1),
-      scaleY: number('scaleY', 1),
-      pivotX: number('pivotX', .5),
-      pivotY: number('pivotY', .5),
-      alpha: number('alpha', 1),
-    );
   }
 
   Uint8List _contentBytes(ArchiveFile file) => file.content;
