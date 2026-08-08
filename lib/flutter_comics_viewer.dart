@@ -5,5 +5,6 @@ export 'src/comics_viewer_source.dart';
 export 'src/comics_viewer_state.dart';
 export 'src/dart_comics_viewer_backend.dart';
 export 'src/dart_comics_viewer_surface.dart';
+export 'src/sound_playback.dart';
 export 'src/windows_comics_viewer_backend.dart';
 export 'src/windows_comics_viewer_surface.dart';

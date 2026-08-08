@@ -7,6 +7,7 @@ import 'package:flutter_comics/flutter_comics.dart';
 
 import 'comics_viewer_backend.dart';
 import 'comics_viewer_source.dart';
+import 'sound_playback.dart';
 import 'source_bytes.dart';
 
 /// flows/sdd-flutter-comics Plan Task 5.2: real tile pixel bytes for one
@@ -76,6 +77,15 @@ class DartComicsDocument {
 /// narrowed to just that one field.
 final class DartComicsViewerBackend extends ChangeNotifier
     implements ComicsViewerBackend {
+  /// [soundCallTimeout] is threaded down to every [SoundPlaybackTrack] this
+  /// backend creates -- overridable so tests can use a short bound instead
+  /// of the real, production-sensible default (see
+  /// [SoundPlaybackTrack.callTimeout]'s own doc comment for why a bound
+  /// exists at all).
+  DartComicsViewerBackend({this.soundCallTimeout = const Duration(seconds: 5)});
+
+  final Duration soundCallTimeout;
+
   void Function(double)? _onScrollChanged;
   void Function(bool)? _onPlayingChanged;
   void Function(String)? _onError;
@@ -87,6 +97,25 @@ final class DartComicsViewerBackend extends ChangeNotifier
   bool _showPreview = false;
   double _position = 0;
   bool _disposed = false;
+
+  /// flows/comics-viewer/sdd-flutter-comics-viewer-dart Plan Task 3.1: one
+  /// [SoundPlaybackTrack] per [EditorSound] that has a real file in the
+  /// archive. Built once at [load] time -- deliberately NOT rebuilt inside
+  /// [_rebuild] (which also runs on [setLanguageIndex]/[togglePreview],
+  /// neither of which should tear down/restart currently-playing sound;
+  /// `comicsDoc.sounds` doesn't vary with either of those anyway).
+  final Map<EditorSound, SoundPlaybackTrack> _soundTracks = {};
+  bool _soundEnabled = true;
+  bool _muted = false;
+  bool get _effectivelyMuted => !_soundEnabled || _muted;
+
+  /// flows/comics-viewer/sdd-flutter-comics-viewer-dart Plan Task 3.3: the
+  /// only testable seam into [_soundTracks] -- `SoundPlaybackTrack.isPlaying`
+  /// is the concrete, observable proof that scroll-driven sound gating
+  /// actually ran, without exposing the map for real production use.
+  @visibleForTesting
+  Map<EditorSound, SoundPlaybackTrack> get soundTracksForTesting =>
+      Map.unmodifiable(_soundTracks);
 
   DartComicsDocument? document;
   double get position => _position;
@@ -131,9 +160,29 @@ final class DartComicsViewerBackend extends ChangeNotifier
       _raw = raw;
       _comicsDoc = comicsDoc;
       _rebuild();
+      _buildSoundTracks(archive, comicsDoc);
     } catch (error) {
       _onError?.call(error.toString());
       rethrow;
+    }
+  }
+
+  /// Per this class's own doc comment on [_soundTracks]: called once here,
+  /// not from [_rebuild]. A sound file referenced in `data.json` but missing
+  /// from the archive is skipped silently -- matches this format's
+  /// established tolerant-of-missing-sub-resource convention, not a hard
+  /// load error (Specifications' Edge Cases).
+  void _buildSoundTracks(Archive archive, ComicsDoc comicsDoc) {
+    for (final track in _soundTracks.values) {
+      unawaited(track.dispose());
+    }
+    _soundTracks.clear();
+    for (final sound in comicsDoc.sounds) {
+      final entry = archive.findFile('sounds/${sound.file}');
+      if (entry == null) continue;
+      final track = SoundPlaybackTrack(_contentBytes(entry), callTimeout: soundCallTimeout);
+      unawaited(track.setMuted(_effectivelyMuted));
+      _soundTracks[sound] = track;
     }
   }
 
@@ -209,13 +258,42 @@ final class DartComicsViewerBackend extends ChangeNotifier
 
   Uint8List _contentBytes(ArchiveFile file) => file.content;
 
+  /// flows/comics-viewer/sdd-flutter-comics-viewer-dart Plan Task 3.2. Same
+  /// `position * document.height` "time" coordinate space
+  /// [DartComicsViewerSurface] already uses for [KeyframeInterpolator].
+  /// `comics-viewer-ios`'s `ImageScrollView.swift` compares sound anims
+  /// against `contentOffset.y` by scaling the *anim* values up
+  /// (`animation.start * zoomScale`, `playSoundsByOffset`) rather than
+  /// scaling the offset down the way the visual path does
+  /// (`comics.process(scrollOffset: contentOffset.y / zoomScale)`) -- the
+  /// two are mathematically equivalent (comparing in either space works,
+  /// same underlying scroll fraction), so using the surface's own existing
+  /// "time" value here for sound too is consistent, not a mismatch.
+  void _evaluateSounds(double previousPosition, double newPosition) {
+    final height = document?.height;
+    if (height == null || _soundTracks.isEmpty) return;
+    final previousTime = previousPosition * height;
+    final currentTime = newPosition * height;
+    for (final entry in _soundTracks.entries) {
+      final action = SoundGating.decide(
+        soundAnims: entry.key.anims,
+        prevTime: previousTime,
+        currentTime: currentTime,
+        currentlyPlaying: entry.value.isPlaying,
+      );
+      unawaited(entry.value.apply(action));
+    }
+  }
+
   @override
   Future<void> play() async {
     if (_timer != null) return;
     _onPlayingChanged?.call(true);
     _timer = Timer.periodic(const Duration(milliseconds: 33), (_) {
+      final previous = _position;
       final next = (_position + .0025).clamp(0.0, 1.0);
       _position = next;
+      _evaluateSounds(previous, next);
       _onScrollChanged?.call(next);
       notifyListeners();
       if (next >= 1) pause();
@@ -231,7 +309,9 @@ final class DartComicsViewerBackend extends ChangeNotifier
 
   @override
   Future<void> setScrollPosition(double position) async {
+    final previous = _position;
     _position = position.clamp(0.0, 1.0);
+    _evaluateSounds(previous, _position);
     notifyListeners();
   }
 
@@ -243,10 +323,24 @@ final class DartComicsViewerBackend extends ChangeNotifier
   }
 
   @override
-  Future<void> setSoundEnabled(bool enabled) async {}
+  Future<void> setSoundEnabled(bool enabled) async {
+    if (_soundEnabled == enabled) return;
+    _soundEnabled = enabled;
+    await _applyMuteToAllTracks();
+  }
 
   @override
-  Future<void> setMuted(bool muted) async {}
+  Future<void> setMuted(bool muted) async {
+    if (_muted == muted) return;
+    _muted = muted;
+    await _applyMuteToAllTracks();
+  }
+
+  Future<void> _applyMuteToAllTracks() async {
+    for (final track in _soundTracks.values) {
+      await track.setMuted(_effectivelyMuted);
+    }
+  }
 
   @override
   Future<void> togglePreview(bool show) async {
@@ -260,6 +354,10 @@ final class DartComicsViewerBackend extends ChangeNotifier
     if (_disposed) return;
     _disposed = true;
     _timer?.cancel();
+    for (final track in _soundTracks.values) {
+      await track.dispose();
+    }
+    _soundTracks.clear();
     super.dispose();
   }
 }

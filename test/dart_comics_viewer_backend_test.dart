@@ -8,23 +8,44 @@
 // Anim.basis) -- the concrete, testable proof this flow fixed the real
 // drift found during Requirements' analysis.
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_comics/flutter_comics.dart';
 import 'package:flutter_comics_viewer/flutter_comics_viewer.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-Uint8List _archiveBytes(Map<String, Object?> data) {
+Uint8List _archiveBytes(Map<String, Object?> data, {List<ArchiveFile>? extraFiles}) {
   final json = utf8.encode(jsonEncode(data));
   final archive = Archive()
     ..addFile(ArchiveFile('data.json', json.length, json))
     ..addFile(ArchiveFile('layers/en_1000_0_0.png', 3, [1, 2, 3]))
     ..addFile(ArchiveFile('layers/ru_1000_0_0.png', 3, [4, 5, 6]));
+  for (final file in extraFiles ?? const <ArchiveFile>[]) {
+    archive.addFile(file);
+  }
   return Uint8List.fromList(ZipEncoder().encode(archive));
 }
 
+/// flows/comics-viewer/sdd-flutter-comics-viewer-dart Plan Task 3.3: without
+/// this, `SoundPlaybackTrack`'s underlying `AudioPlayer` construction throws
+/// an uncaught `MissingPluginException` on the `xyz.luan/audioplayers.global`
+/// channel (confirmed directly while building `sound_playback_test.dart`) --
+/// unrelated to what these tests assert, but real and uncaught without a
+/// mock. Real play/pause/etc. calls still won't complete without a per-player
+/// EventChannel this mock doesn't provide either -- bounded by
+/// `DartComicsViewerBackend.soundCallTimeout`, set short below, same
+/// resolution as `sound_playback_test.dart`'s own.
+void _mockAudioplayersChannel() {
+  final binding = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+  for (final name in ['xyz.luan/audioplayers', 'xyz.luan/audioplayers.global']) {
+    binding.setMockMethodCallHandler(MethodChannel(name), (call) async => null);
+  }
+}
+
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   test(
     'parses tiled bytes, languages, preview filtering and dimensions',
     () async {
@@ -173,4 +194,111 @@ void main() {
       await backend.dispose();
     },
   );
+
+  group('sound playback (Plan Task 3)', () {
+    setUp(_mockAudioplayersChannel);
+
+    Uint8List soundArchive({required int start, required int end}) => _archiveBytes(
+      {
+        'width': 1,
+        'height': 1000,
+        'layers': [
+          {
+            'images': [
+              {'file': 'en_{0}_{1}_{2}.png', 'width': 12, 'height': 10},
+            ],
+          },
+        ],
+        'sounds': [
+          {
+            'file': 'ambient.mp3',
+            'animations': [
+              {
+                r'$type': 'Comics.Editor.Models.SoundAnim, Comics.Editor',
+                'start': start,
+                'end': end,
+              },
+            ],
+          },
+        ],
+      },
+      extraFiles: [ArchiveFile('sounds/ambient.mp3', 3, [9, 9, 9])],
+    );
+
+    test('one-shot sound (start == end) plays once when crossed downward', () async {
+      final backend = DartComicsViewerBackend(soundCallTimeout: const Duration(milliseconds: 50))
+        ..setCallbacks(onScrollChanged: (_) {}, onPlayingChanged: (_) {}, onError: (_) {});
+      await backend.load(ComicsViewerBytes(soundArchive(start: 300, end: 300), revisionKey: 1));
+      final track = backend.soundTracksForTesting.values.single;
+
+      // document.height == 1000, so time = position * 1000. Before the
+      // point (position 0.1 -> time 100): not yet triggered.
+      await backend.setScrollPosition(0.1);
+      expect(track.isPlaying, isFalse);
+
+      // Crossing downward through time 300 (position 0.1 -> 0.35): plays once.
+      await backend.setScrollPosition(0.35);
+      expect(track.isPlaying, isTrue);
+
+      await backend.dispose();
+    });
+
+    test('one-shot sound does not replay when scrolled back up past it', () async {
+      final backend = DartComicsViewerBackend(soundCallTimeout: const Duration(milliseconds: 50))
+        ..setCallbacks(onScrollChanged: (_) {}, onPlayingChanged: (_) {}, onError: (_) {});
+      await backend.load(ComicsViewerBytes(soundArchive(start: 300, end: 300), revisionKey: 1));
+      final track = backend.soundTracksForTesting.values.single;
+
+      await backend.setScrollPosition(0.35); // crosses downward, plays once
+      expect(track.isPlaying, isTrue);
+
+      // SoundGating.decide's own already-tested rule: once playing,
+      // "already playing" -> none, so isPlaying stays true (not re-triggered,
+      // not stopped) as long as the position is still at/after the point.
+      await backend.setScrollPosition(0.1); // scroll back up past the point
+      // The real Anim (start==end==300) is no longer "in range" once
+      // currentTime < start, so SoundGating.decide's currentlyPlaying=true
+      // branch returns `stop` here -- confirms scrolling away stops a
+      // one-shot sound rather than leaving it playing forever.
+      expect(track.isPlaying, isFalse);
+
+      await backend.dispose();
+    });
+
+    test('range sound starts looping on entry, stops on exit', () async {
+      final backend = DartComicsViewerBackend(soundCallTimeout: const Duration(milliseconds: 50))
+        ..setCallbacks(onScrollChanged: (_) {}, onPlayingChanged: (_) {}, onError: (_) {});
+      await backend.load(ComicsViewerBytes(soundArchive(start: 200, end: 400), revisionKey: 1));
+      final track = backend.soundTracksForTesting.values.single;
+
+      await backend.setScrollPosition(0.1); // time 100, before the range
+      expect(track.isPlaying, isFalse);
+
+      await backend.setScrollPosition(0.3); // time 300, inside [200, 400]
+      expect(track.isPlaying, isTrue);
+
+      await backend.setScrollPosition(0.5); // time 500, past the range
+      expect(track.isPlaying, isFalse);
+
+      await backend.dispose();
+    });
+
+    test('setSoundEnabled(false) mutes without losing isPlaying; re-enabling resumes', () async {
+      final backend = DartComicsViewerBackend(soundCallTimeout: const Duration(milliseconds: 50))
+        ..setCallbacks(onScrollChanged: (_) {}, onPlayingChanged: (_) {}, onError: (_) {});
+      await backend.load(ComicsViewerBytes(soundArchive(start: 200, end: 400), revisionKey: 1));
+      final track = backend.soundTracksForTesting.values.single;
+
+      await backend.setScrollPosition(0.3); // inside the range, playing
+      expect(track.isPlaying, isTrue);
+
+      await backend.setSoundEnabled(false);
+      expect(track.isPlaying, isTrue); // paused, not stopped
+
+      await backend.setSoundEnabled(true);
+      expect(track.isPlaying, isTrue); // resumed, not spuriously re-triggered
+
+      await backend.dispose();
+    });
+  });
 }
