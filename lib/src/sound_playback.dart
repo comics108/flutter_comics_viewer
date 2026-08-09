@@ -2,6 +2,8 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_comics/flutter_comics.dart';
 
+import 'sound_cache_prepare.dart';
+
 /// Viewer-side counterpart to `apps/comics-editor`'s `SoundPlayer`
 /// (`lib/src/ui/audio/sound_player.dart`), gated by the same shared
 /// [SoundGating]. Plays via [BytesSource] instead of `DeviceFileSource` --
@@ -19,7 +21,10 @@ class SoundPlaybackTrack {
   /// timeouts as long as `AudioPlayer.preparationTimeout`'s 30 seconds.
   /// Defaults to a real, production-sensible bound; tests pass a much
   /// shorter one so a genuinely-unresponsive mock doesn't slow the suite.
-  SoundPlaybackTrack(this.bytes, {this.callTimeout = const Duration(seconds: 5)}) {
+  SoundPlaybackTrack(
+    this.bytes, {
+    this.callTimeout = const Duration(seconds: 5),
+  }) {
     _player.onPlayerComplete.listen((_) {
       // Matches SoundPlayer's Player_MediaEnded handling: if scroll still
       // wants this looping, restart; otherwise settle into stopped. A
@@ -63,11 +68,15 @@ class SoundPlaybackTrack {
       case SoundAction.playOnce:
         _playing = true;
         _looping = false;
-        await _guarded(() => _player.play(BytesSource(bytes)));
+        await _guarded(() async {
+          await prepareAudioBytesCache();
+          await _player.play(BytesSource(bytes));
+        });
       case SoundAction.startLooping:
         _playing = true;
         _looping = true;
         await _guarded(() async {
+          await prepareAudioBytesCache();
           await _player.setReleaseMode(ReleaseMode.loop);
           await _player.play(BytesSource(bytes));
         });

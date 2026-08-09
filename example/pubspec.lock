@@ -2,7 +2,7 @@
 # See https://dart.dev/tools/pub/glossary#lockfile
 packages:
   archive:
-    dependency: transitive
+    dependency: "direct dev"
     description:
       name: archive
       sha256: a96e8b390886ee8abb49b7bd3ac8df6f451c621619f52a26e815fdcf568959ff
@@ -178,10 +178,10 @@ packages:
     dependency: transitive
     description:
       name: flutter_comics
-      sha256: "4a77f191883315f3e59cd7c7fc0ae38099fd1723179b0ee6582713c3ed4b5d39"
+      sha256: bffbf375a1f01e7d653fd1e12495e25e4d45d8da9ef9ceb4ed921a6b6098d441
       url: "https://pub.dev"
     source: hosted
-    version: "0.1.0+2"
+    version: "0.1.1"
   flutter_comics_viewer:
     dependency: "direct main"
     description:

@@ -65,7 +65,7 @@ class _ComicsViewerState extends State<ComicsViewer> {
         (widget.initialFilePath == null
             ? null
             : ComicsViewerPath(widget.initialFilePath!));
-    if (source != null) unawaited(widget.controller.load(source));
+    if (source != null) _loadAfterBuild(source);
   }
 
   @override
@@ -88,8 +88,14 @@ class _ComicsViewerState extends State<ComicsViewer> {
             ? null
             : ComicsViewerPath(widget.initialFilePath!));
     if (next != null && previous?.revisionKey != next.revisionKey) {
-      unawaited(widget.controller.load(next));
+      _loadAfterBuild(next);
     }
+  }
+
+  void _loadAfterBuild(ComicsViewerSource source) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(widget.controller.load(source));
+    });
   }
 
   @override

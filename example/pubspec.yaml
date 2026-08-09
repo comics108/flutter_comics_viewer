@@ -30,6 +30,7 @@ dependencies:
   cupertino_icons: ^1.0.8
 
 dev_dependencies:
+  archive: ^4.0.9
   integration_test:
     sdk: flutter
   flutter_test:
@@ -52,6 +53,9 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
+  assets:
+    - assets/sample.comics
 
   # To add assets to your application, add an assets section, like this:
   # assets:
