@@ -23,6 +23,7 @@ class SoundPlaybackTrack {
   /// shorter one so a genuinely-unresponsive mock doesn't slow the suite.
   SoundPlaybackTrack(
     this.bytes, {
+    this.mimeType,
     this.callTimeout = const Duration(seconds: 5),
   }) {
     _player.onPlayerComplete.listen((_) {
@@ -38,6 +39,7 @@ class SoundPlaybackTrack {
   }
 
   final Uint8List bytes;
+  final String? mimeType;
   final Duration callTimeout;
   final AudioPlayer _player = AudioPlayer();
   bool _playing = false;
@@ -70,7 +72,7 @@ class SoundPlaybackTrack {
         _looping = false;
         await _guarded(() async {
           await prepareAudioBytesCache();
-          await _player.play(BytesSource(bytes));
+          await _player.play(BytesSource(bytes, mimeType: mimeType));
         });
       case SoundAction.startLooping:
         _playing = true;
@@ -78,7 +80,7 @@ class SoundPlaybackTrack {
         await _guarded(() async {
           await prepareAudioBytesCache();
           await _player.setReleaseMode(ReleaseMode.loop);
-          await _player.play(BytesSource(bytes));
+          await _player.play(BytesSource(bytes, mimeType: mimeType));
         });
       case SoundAction.stop:
         _playing = false;

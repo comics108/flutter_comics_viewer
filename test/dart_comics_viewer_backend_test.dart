@@ -230,6 +230,7 @@ void main() {
         ..setCallbacks(onScrollChanged: (_) {}, onPlayingChanged: (_) {}, onError: (_) {});
       await backend.load(ComicsViewerBytes(soundArchive(start: 300, end: 300), revisionKey: 1));
       final track = backend.soundTracksForTesting.values.single;
+      expect(track.mimeType, 'audio/mpeg');
 
       // document.height == 1000, so time = position * 1000. Before the
       // point (position 0.1 -> time 100): not yet triggered.

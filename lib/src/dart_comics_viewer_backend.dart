@@ -180,7 +180,11 @@ final class DartComicsViewerBackend extends ChangeNotifier
     for (final sound in comicsDoc.sounds) {
       final entry = archive.findFile('sounds/${sound.file}');
       if (entry == null) continue;
-      final track = SoundPlaybackTrack(_contentBytes(entry), callTimeout: soundCallTimeout);
+      final track = SoundPlaybackTrack(
+        _contentBytes(entry),
+        mimeType: _audioMimeType(sound.file),
+        callTimeout: soundCallTimeout,
+      );
       unawaited(track.setMuted(_effectivelyMuted));
       _soundTracks[sound] = track;
     }
@@ -257,6 +261,18 @@ final class DartComicsViewerBackend extends ChangeNotifier
   }
 
   Uint8List _contentBytes(ArchiveFile file) => file.content;
+
+  String? _audioMimeType(String fileName) {
+    final extension = fileName.toLowerCase().split('.').last;
+    return switch (extension) {
+      'mp3' => 'audio/mpeg',
+      'm4a' || 'mp4' => 'audio/mp4',
+      'aac' => 'audio/aac',
+      'wav' => 'audio/wav',
+      'ogg' || 'oga' => 'audio/ogg',
+      _ => null,
+    };
+  }
 
   /// flows/comics-viewer/sdd-flutter-comics-viewer-dart Plan Task 3.2. Same
   /// `position * document.height` "time" coordinate space
