@@ -12,7 +12,7 @@ dependencies:
   audioplayers: ^6.8.1
   flutter:
     sdk: flutter
-  flutter_comics: ^0.1.0+2
+  flutter_comics: ^0.1.1
   flutter_web_plugins:
     sdk: flutter
   web: ^1.0.0
@@ -29,9 +29,9 @@ dev_dependencies:
 # last-published snapshot, without weakening the real hosted constraint declared above (which is what
 # actually governs external consumers / a future real publish of this package). Remove this section,
 # not the `dependencies` entry, once `flutter_comics` is republished with the current local changes.
-dependency_overrides:
-  flutter_comics:
-    path: ../../flutter_comics
+
+#dependency_overrides:
+#    path: ../../flutter_comics
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
