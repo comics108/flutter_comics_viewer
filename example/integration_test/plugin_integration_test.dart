@@ -8,29 +8,60 @@ import 'package:viewer_example/main.dart' as app;
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('bundled sample.comics renders in the macOS example', (
-    tester,
-  ) async {
-    expect(defaultTargetPlatform, TargetPlatform.macOS);
-    app.main();
+  testWidgets(
+    'both bundled v2026 and v2012 archives render in the macOS example',
+    (tester) async {
+      expect(defaultTargetPlatform, TargetPlatform.macOS);
+      app.main();
 
-    await _pumpUntil(
-      tester,
-      () => find.textContaining('Rendered sample.comics').evaluate().isNotEmpty,
-      timeout: const Duration(seconds: 30),
-    );
+      await _pumpUntil(
+        tester,
+        () => find
+            .textContaining('Rendered sample_v2026.comics')
+            .evaluate()
+            .isNotEmpty,
+        timeout: const Duration(seconds: 30),
+      );
 
-    expect(find.byKey(app.viewerKey), findsOneWidget);
-    expect(find.byType(DartComicsViewerSurface), findsOneWidget);
-    expect(find.byType(Image), findsWidgets);
-    expect(find.textContaining('Viewer error:'), findsNothing);
+      expect(find.byKey(app.viewerKey), findsOneWidget);
+      expect(find.byType(DartComicsViewerSurface), findsOneWidget);
+      expect(find.byType(Image), findsWidgets);
+      expect(find.textContaining('Viewer error:'), findsNothing);
 
-    final slider = tester.widget<Slider>(find.byKey(app.viewerPositionKey));
-    slider.onChanged!(0.5);
-    await tester.pump(const Duration(milliseconds: 250));
-    expect(find.text('Rendered sample.comics — 50%'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-  });
+      final slider = tester.widget<Slider>(find.byKey(app.viewerPositionKey));
+      slider.onChanged!(0.5);
+      await tester.pump(const Duration(milliseconds: 250));
+      expect(find.text('Rendered sample_v2026.comics — 50%'), findsOneWidget);
+
+      await tester.tap(find.text('v2012'));
+      await _pumpUntil(
+        tester,
+        () => find
+            .text('Rendered sample_v2012.comics — 0%')
+            .evaluate()
+            .isNotEmpty,
+        timeout: const Duration(seconds: 30),
+      );
+      expect(find.byType(Image), findsWidgets);
+      expect(find.textContaining('Viewer error:'), findsNothing);
+
+      final v2012Slider = tester.widget<Slider>(
+        find.byKey(app.viewerPositionKey),
+      );
+      v2012Slider.onChanged!(0.5);
+      await tester.pump(const Duration(milliseconds: 250));
+      expect(find.text('Rendered sample_v2012.comics — 50%'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+
+      // Real fixture sounds can leave audioplayers' position updater active
+      // until asynchronous backend disposal finishes. Pause the tracks and
+      // explicitly drain disposal before the integration binding tears down.
+      await tester.tap(find.byTooltip('Mute'));
+      await tester.pumpAndSettle();
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+    },
+  );
 }
 
 Future<void> _pumpUntil(

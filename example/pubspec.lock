@@ -175,12 +175,11 @@ packages:
     source: sdk
     version: "0.0.0"
   flutter_comics:
-    dependency: transitive
+    dependency: "direct overridden"
     description:
-      name: flutter_comics
-      sha256: bffbf375a1f01e7d653fd1e12495e25e4d45d8da9ef9ceb4ed921a6b6098d441
-      url: "https://pub.dev"
-    source: hosted
+      path: "../../../flutter_comics"
+      relative: true
+    source: path
     version: "0.1.1"
   flutter_comics_viewer:
     dependency: "direct main"
@@ -188,7 +187,7 @@ packages:
       path: ".."
       relative: true
     source: path
-    version: "1.0.0"
+    version: "1.0.1"
   flutter_driver:
     dependency: transitive
     description: flutter

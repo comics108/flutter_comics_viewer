@@ -29,6 +29,10 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
 
+dependency_overrides:
+  flutter_comics:
+    path: ../../../flutter_comics
+
 dev_dependencies:
   archive: ^4.0.9
   integration_test:
@@ -55,7 +59,8 @@ flutter:
   uses-material-design: true
 
   assets:
-    - assets/sample.comics
+    - assets/sample_v2012.comics
+    - assets/sample_v2026.comics
 
   # To add assets to your application, add an assets section, like this:
   # assets:

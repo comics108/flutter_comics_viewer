@@ -1,6 +1,6 @@
 name: flutter_comics_viewer
 description: "Flutter plugin for rendering interactive comics and puzzles with animations and sound."
-version: 1.0.0
+version: 1.1.0
 homepage: https://nativemind.net
 
 environment:
@@ -32,6 +32,7 @@ dev_dependencies:
 # not the `dependencies` entry, once `flutter_comics` is republished with the current local changes.
 
 #dependency_overrides:
+#  flutter_comics:
 #    path: ../../flutter_comics
 
 # For information on the generic Dart part of this file, see the

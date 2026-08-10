@@ -23,14 +23,18 @@ class DartComicsViewerSurface extends StatelessWidget {
             builder: (context, constraints) {
               final scale = constraints.maxWidth / document.width;
               final contentHeight = document.height * scale;
-              final travel = math.max(
+              final viewportHeightDoc = constraints.maxHeight / scale;
+              final scrollTravelDoc = math.max(
                 0.0,
-                contentHeight - constraints.maxHeight,
+                document.height - viewportHeightDoc,
               );
-              final time = backend.position * document.height;
+              backend.updateDocumentScrollTravel(scrollTravelDoc);
+              final documentScrollOffset = backend.documentScrollOffsetFor(
+                backend.position,
+              );
               return ClipRect(
                 child: Transform.translate(
-                  offset: Offset(0, -travel * backend.position),
+                  offset: Offset(0, -documentScrollOffset * scale),
                   child: SizedBox(
                     width: constraints.maxWidth,
                     height: contentHeight,
@@ -38,7 +42,12 @@ class DartComicsViewerSurface extends StatelessWidget {
                       clipBehavior: Clip.none,
                       children: [
                         for (final layer in document.layers)
-                          _DartLayer(layer: layer, scale: scale, time: time),
+                          _DartLayer(
+                            layer: layer,
+                            scale: scale,
+                            documentScrollOffset: documentScrollOffset,
+                            cameraPath: document.sourceDocument?.cameraPath,
+                          ),
                       ],
                     ),
                   ),
@@ -56,12 +65,14 @@ class _DartLayer extends StatelessWidget {
   const _DartLayer({
     required this.layer,
     required this.scale,
-    required this.time,
+    required this.documentScrollOffset,
+    required this.cameraPath,
   });
 
   final RenderedLayer layer;
   final double scale;
-  final double time;
+  final double documentScrollOffset;
+  final CameraPath? cameraPath;
 
   @override
   Widget build(BuildContext context) {
@@ -70,10 +81,26 @@ class _DartLayer extends StatelessWidget {
     // layer.editorLayer.anims -- not this package's own second copy of
     // the same cubic-ease-out math (deleted alongside DartViewerLayer).
     final anims = layer.editorLayer.anims;
-    final translation = KeyframeInterpolator.translateAt(anims, time, layer.editorLayer.translate);
-    final layerScale = KeyframeInterpolator.scaleAt(anims, time);
-    final rotation = KeyframeInterpolator.rotateAt(anims, time);
-    final alpha = KeyframeInterpolator.alphaAt(anims, time).clamp(0.0, 1.0);
+    final authoredTranslation = KeyframeInterpolator.translateAt(
+      anims,
+      documentScrollOffset,
+      layer.editorLayer.translate,
+    );
+    final parallax = CameraPathEvaluator.parallaxAdjustment(
+      cameraPath,
+      documentScrollOffset,
+      layer.editorLayer.zDepth,
+    );
+    final translation = authoredTranslation + parallax;
+    final layerScale = KeyframeInterpolator.scaleAt(
+      anims,
+      documentScrollOffset,
+    );
+    final rotation = KeyframeInterpolator.rotateAt(anims, documentScrollOffset);
+    final alpha = KeyframeInterpolator.alphaAt(
+      anims,
+      documentScrollOffset,
+    ).clamp(0.0, 1.0);
     // Positional record access ($2/$3/etc.) rather than the named fields
     // KeyframeInterpolator declares (angle/pivotX/pivotY/scaleX/scaleY) --
     // the analyzer didn't resolve the named getters across this

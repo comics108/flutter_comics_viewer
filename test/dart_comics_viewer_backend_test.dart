@@ -8,6 +8,7 @@
 // Anim.basis) -- the concrete, testable proof this flow fixed the real
 // drift found during Requirements' analysis.
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:archive/archive.dart';
 import 'package:flutter/services.dart';
@@ -15,7 +16,10 @@ import 'package:flutter_comics/flutter_comics.dart';
 import 'package:flutter_comics_viewer/flutter_comics_viewer.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-Uint8List _archiveBytes(Map<String, Object?> data, {List<ArchiveFile>? extraFiles}) {
+Uint8List _archiveBytes(
+  Map<String, Object?> data, {
+  List<ArchiveFile>? extraFiles,
+}) {
   final json = utf8.encode(jsonEncode(data));
   final archive = Archive()
     ..addFile(ArchiveFile('data.json', json.length, json))
@@ -37,8 +41,12 @@ Uint8List _archiveBytes(Map<String, Object?> data, {List<ArchiveFile>? extraFile
 /// `DartComicsViewerBackend.soundCallTimeout`, set short below, same
 /// resolution as `sound_playback_test.dart`'s own.
 void _mockAudioplayersChannel() {
-  final binding = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
-  for (final name in ['xyz.luan/audioplayers', 'xyz.luan/audioplayers.global']) {
+  final binding =
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+  for (final name in [
+    'xyz.luan/audioplayers',
+    'xyz.luan/audioplayers.global',
+  ]) {
     binding.setMockMethodCallHandler(MethodChannel(name), (call) async => null);
   }
 }
@@ -83,6 +91,8 @@ void main() {
       await backend.load(ComicsViewerBytes(bytes, revisionKey: 1));
       expect(backend.document!.width, 1080);
       expect(backend.document!.height, 4000);
+      expect(backend.document!.sourceDocument, isNotNull);
+      expect(backend.document!.sourceDocument!.layers, hasLength(2));
       expect(backend.document!.layers, hasLength(1));
       expect(backend.document!.layers.single.tiles.single.bytes, [1, 2, 3]);
 
@@ -95,12 +105,62 @@ void main() {
   );
 
   test(
+    'canonical document scroll coordinate clamps and load resets it',
+    () async {
+      final positions = <double>[];
+      final backend = DartComicsViewerBackend()
+        ..setCallbacks(
+          onScrollChanged: positions.add,
+          onPlayingChanged: (_) {},
+          onError: (_) {},
+        );
+      final bytes = _archiveBytes({
+        'width': 720,
+        'height': 1600,
+        'layers': [
+          {
+            'images': [
+              {'file': 'en_{0}_{1}_{2}.png', 'width': 12, 'height': 10},
+            ],
+          },
+        ],
+      });
+
+      await backend.load(ComicsViewerBytes(bytes, revisionKey: 1));
+      expect(backend.documentScrollOffsetFor(0.5), 0);
+
+      backend.updateDocumentScrollTravel(1200);
+      expect(backend.documentScrollOffsetFor(-1), 0);
+      expect(backend.documentScrollOffsetFor(0.5), 600);
+      expect(backend.documentScrollOffsetFor(2), 1200);
+      expect(backend.documentScrollOffsetFor(double.nan), 0);
+
+      backend.updateDocumentScrollTravel(double.infinity);
+      expect(backend.documentScrollOffsetFor(1), 0);
+      backend.updateDocumentScrollTravel(-20);
+      expect(backend.documentScrollOffsetFor(1), 0);
+
+      backend.updateDocumentScrollTravel(1200);
+      await backend.setScrollPosition(0.75);
+      await backend.load(ComicsViewerBytes(bytes, revisionKey: 2));
+      expect(backend.position, 0);
+      expect(backend.documentScrollOffsetFor(1), 0);
+      expect(positions.last, 0);
+      await backend.dispose();
+    },
+  );
+
+  test(
     'a layer with solidColor/mask/kind/groupId/parentId/Anim.basis survives parsing '
     '-- the real fields the old minimal DartViewerAnim/DartViewerLayer parser silently '
     'dropped, confirmed fixed by this flow',
     () async {
       final backend = DartComicsViewerBackend()
-        ..setCallbacks(onScrollChanged: (_) {}, onPlayingChanged: (_) {}, onError: (_) {});
+        ..setCallbacks(
+          onScrollChanged: (_) {},
+          onPlayingChanged: (_) {},
+          onError: (_) {},
+        );
       final bytes = _archiveBytes({
         'width': 720,
         'height': 1600,
@@ -151,7 +211,11 @@ void main() {
     '-- no second, duplicate interpolation implementation',
     () async {
       final backend = DartComicsViewerBackend()
-        ..setCallbacks(onScrollChanged: (_) {}, onPlayingChanged: (_) {}, onError: (_) {});
+        ..setCallbacks(
+          onScrollChanged: (_) {},
+          onPlayingChanged: (_) {},
+          onError: (_) {},
+        );
       final bytes = _archiveBytes({
         'width': 1,
         'height': 1,
@@ -187,7 +251,11 @@ void main() {
 
       await backend.load(ComicsViewerBytes(bytes, revisionKey: 1));
       final anims = backend.document!.layers.single.editorLayer.anims;
-      final translation = KeyframeInterpolator.translateAt(anims, 150, Offset.zero);
+      final translation = KeyframeInterpolator.translateAt(
+        anims,
+        150,
+        Offset.zero,
+      );
       expect(translation.dx, closeTo(70, 1e-9));
       expect(translation.dy, closeTo(187.5, 1e-9));
       expect(KeyframeInterpolator.alphaAt(anims, 500), 1.4);
@@ -198,78 +266,120 @@ void main() {
   group('sound playback (Plan Task 3)', () {
     setUp(_mockAudioplayersChannel);
 
-    Uint8List soundArchive({required int start, required int end}) => _archiveBytes(
-      {
-        'width': 1,
-        'height': 1000,
-        'layers': [
+    Uint8List soundArchive({required int start, required int end}) =>
+        _archiveBytes(
           {
-            'images': [
-              {'file': 'en_{0}_{1}_{2}.png', 'width': 12, 'height': 10},
-            ],
-          },
-        ],
-        'sounds': [
-          {
-            'file': 'ambient.mp3',
-            'animations': [
+            'width': 1,
+            'height': 1000,
+            'layers': [
               {
-                r'$type': 'Comics.Editor.Models.SoundAnim, Comics.Editor',
-                'start': start,
-                'end': end,
+                'images': [
+                  {'file': 'en_{0}_{1}_{2}.png', 'width': 12, 'height': 10},
+                ],
+              },
+            ],
+            'sounds': [
+              {
+                'file': 'ambient.mp3',
+                'animations': [
+                  {
+                    r'$type': 'Comics.Editor.Models.SoundAnim, Comics.Editor',
+                    'start': start,
+                    'end': end,
+                  },
+                ],
               },
             ],
           },
-        ],
+          extraFiles: [
+            ArchiveFile('sounds/ambient.mp3', 3, [9, 9, 9]),
+          ],
+        );
+
+    test(
+      'one-shot sound (start == end) plays once when crossed downward',
+      () async {
+        final backend =
+            DartComicsViewerBackend(
+              soundCallTimeout: const Duration(milliseconds: 50),
+            )..setCallbacks(
+              onScrollChanged: (_) {},
+              onPlayingChanged: (_) {},
+              onError: (_) {},
+            );
+        await backend.load(
+          ComicsViewerBytes(soundArchive(start: 300, end: 300), revisionKey: 1),
+        );
+        final track = backend.soundTracksForTesting.values.single;
+        expect(track.mimeType, 'audio/mpeg');
+
+        // Before the first surface layout, travel is zero. Neither a position
+        // change nor the later layout measurement itself may trigger sound.
+        await backend.setScrollPosition(0.35);
+        expect(track.isPlaying, isFalse);
+        backend.updateDocumentScrollTravel(1000);
+        expect(track.isPlaying, isFalse);
+        await backend.setScrollPosition(0.1);
+
+        // document scroll travel == 1000, so time = position * 1000. Before the
+        // point (position 0.1 -> time 100): not yet triggered.
+        expect(track.isPlaying, isFalse);
+
+        // Crossing downward through time 300 (position 0.1 -> 0.35): plays once.
+        await backend.setScrollPosition(0.35);
+        expect(track.isPlaying, isTrue);
+
+        await backend.dispose();
       },
-      extraFiles: [ArchiveFile('sounds/ambient.mp3', 3, [9, 9, 9])],
     );
 
-    test('one-shot sound (start == end) plays once when crossed downward', () async {
-      final backend = DartComicsViewerBackend(soundCallTimeout: const Duration(milliseconds: 50))
-        ..setCallbacks(onScrollChanged: (_) {}, onPlayingChanged: (_) {}, onError: (_) {});
-      await backend.load(ComicsViewerBytes(soundArchive(start: 300, end: 300), revisionKey: 1));
-      final track = backend.soundTracksForTesting.values.single;
-      expect(track.mimeType, 'audio/mpeg');
+    test(
+      'one-shot sound does not replay when scrolled back up past it',
+      () async {
+        final backend =
+            DartComicsViewerBackend(
+              soundCallTimeout: const Duration(milliseconds: 50),
+            )..setCallbacks(
+              onScrollChanged: (_) {},
+              onPlayingChanged: (_) {},
+              onError: (_) {},
+            );
+        await backend.load(
+          ComicsViewerBytes(soundArchive(start: 300, end: 300), revisionKey: 1),
+        );
+        backend.updateDocumentScrollTravel(1000);
+        final track = backend.soundTracksForTesting.values.single;
 
-      // document.height == 1000, so time = position * 1000. Before the
-      // point (position 0.1 -> time 100): not yet triggered.
-      await backend.setScrollPosition(0.1);
-      expect(track.isPlaying, isFalse);
+        await backend.setScrollPosition(0.35); // crosses downward, plays once
+        expect(track.isPlaying, isTrue);
 
-      // Crossing downward through time 300 (position 0.1 -> 0.35): plays once.
-      await backend.setScrollPosition(0.35);
-      expect(track.isPlaying, isTrue);
+        // SoundGating.decide's own already-tested rule: once playing,
+        // "already playing" -> none, so isPlaying stays true (not re-triggered,
+        // not stopped) as long as the position is still at/after the point.
+        await backend.setScrollPosition(0.1); // scroll back up past the point
+        // The real Anim (start==end==300) is no longer "in range" once
+        // currentTime < start, so SoundGating.decide's currentlyPlaying=true
+        // branch returns `stop` here -- confirms scrolling away stops a
+        // one-shot sound rather than leaving it playing forever.
+        expect(track.isPlaying, isFalse);
 
-      await backend.dispose();
-    });
-
-    test('one-shot sound does not replay when scrolled back up past it', () async {
-      final backend = DartComicsViewerBackend(soundCallTimeout: const Duration(milliseconds: 50))
-        ..setCallbacks(onScrollChanged: (_) {}, onPlayingChanged: (_) {}, onError: (_) {});
-      await backend.load(ComicsViewerBytes(soundArchive(start: 300, end: 300), revisionKey: 1));
-      final track = backend.soundTracksForTesting.values.single;
-
-      await backend.setScrollPosition(0.35); // crosses downward, plays once
-      expect(track.isPlaying, isTrue);
-
-      // SoundGating.decide's own already-tested rule: once playing,
-      // "already playing" -> none, so isPlaying stays true (not re-triggered,
-      // not stopped) as long as the position is still at/after the point.
-      await backend.setScrollPosition(0.1); // scroll back up past the point
-      // The real Anim (start==end==300) is no longer "in range" once
-      // currentTime < start, so SoundGating.decide's currentlyPlaying=true
-      // branch returns `stop` here -- confirms scrolling away stops a
-      // one-shot sound rather than leaving it playing forever.
-      expect(track.isPlaying, isFalse);
-
-      await backend.dispose();
-    });
+        await backend.dispose();
+      },
+    );
 
     test('range sound starts looping on entry, stops on exit', () async {
-      final backend = DartComicsViewerBackend(soundCallTimeout: const Duration(milliseconds: 50))
-        ..setCallbacks(onScrollChanged: (_) {}, onPlayingChanged: (_) {}, onError: (_) {});
-      await backend.load(ComicsViewerBytes(soundArchive(start: 200, end: 400), revisionKey: 1));
+      final backend =
+          DartComicsViewerBackend(
+            soundCallTimeout: const Duration(milliseconds: 50),
+          )..setCallbacks(
+            onScrollChanged: (_) {},
+            onPlayingChanged: (_) {},
+            onError: (_) {},
+          );
+      await backend.load(
+        ComicsViewerBytes(soundArchive(start: 200, end: 400), revisionKey: 1),
+      );
+      backend.updateDocumentScrollTravel(1000);
       final track = backend.soundTracksForTesting.values.single;
 
       await backend.setScrollPosition(0.1); // time 100, before the range
@@ -284,21 +394,69 @@ void main() {
       await backend.dispose();
     });
 
-    test('setSoundEnabled(false) mutes without losing isPlaying; re-enabling resumes', () async {
-      final backend = DartComicsViewerBackend(soundCallTimeout: const Duration(milliseconds: 50))
-        ..setCallbacks(onScrollChanged: (_) {}, onPlayingChanged: (_) {}, onError: (_) {});
-      await backend.load(ComicsViewerBytes(soundArchive(start: 200, end: 400), revisionKey: 1));
-      final track = backend.soundTracksForTesting.values.single;
+    test(
+      'setSoundEnabled(false) mutes without losing isPlaying; re-enabling resumes',
+      () async {
+        final backend =
+            DartComicsViewerBackend(
+              soundCallTimeout: const Duration(milliseconds: 50),
+            )..setCallbacks(
+              onScrollChanged: (_) {},
+              onPlayingChanged: (_) {},
+              onError: (_) {},
+            );
+        await backend.load(
+          ComicsViewerBytes(soundArchive(start: 200, end: 400), revisionKey: 1),
+        );
+        backend.updateDocumentScrollTravel(1000);
+        final track = backend.soundTracksForTesting.values.single;
 
-      await backend.setScrollPosition(0.3); // inside the range, playing
-      expect(track.isPlaying, isTrue);
+        await backend.setScrollPosition(0.3); // inside the range, playing
+        expect(track.isPlaying, isTrue);
 
-      await backend.setSoundEnabled(false);
-      expect(track.isPlaying, isTrue); // paused, not stopped
+        await backend.setSoundEnabled(false);
+        expect(track.isPlaying, isTrue); // paused, not stopped
 
-      await backend.setSoundEnabled(true);
-      expect(track.isPlaying, isTrue); // resumed, not spuriously re-triggered
+        await backend.setSoundEnabled(true);
+        expect(track.isPlaying, isTrue); // resumed, not spuriously re-triggered
 
+        await backend.dispose();
+      },
+    );
+  });
+
+  group('real v2012/v2026 fixtures', () {
+    Future<DartComicsViewerBackend> loadFixture(String name) async {
+      final backend = DartComicsViewerBackend()
+        ..setCallbacks(
+          onScrollChanged: (_) {},
+          onPlayingChanged: (_) {},
+          onError: (_) {},
+        );
+      final bytes = await File('example/assets/$name').readAsBytes();
+      await backend.load(ComicsViewerBytes(bytes, revisionKey: name));
+      return backend;
+    }
+
+    test(
+      'v2012 retains its full classic source model with inert additive defaults',
+      () async {
+        final backend = await loadFixture('sample_v2012.comics');
+        final source = backend.document!.sourceDocument!;
+        expect(source.layers, hasLength(177));
+        expect(source.sounds, hasLength(2));
+        expect(source.cameraPath, isNull);
+        expect(source.layers.every((layer) => layer.zDepth == 0), isTrue);
+        await backend.dispose();
+      },
+    );
+
+    test('v2026 retains camera path and non-uniform layer depths', () async {
+      final backend = await loadFixture('sample_v2026.comics');
+      final source = backend.document!.sourceDocument!;
+      expect(source.layers, hasLength(519));
+      expect(source.cameraPath!.points, hasLength(19));
+      expect(source.layers.where((layer) => layer.zDepth != 0), hasLength(505));
       await backend.dispose();
     });
   });

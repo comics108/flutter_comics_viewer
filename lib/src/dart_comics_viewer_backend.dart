@@ -51,10 +51,12 @@ class DartComicsDocument {
     required this.width,
     required this.height,
     required this.layers,
+    this.sourceDocument,
   });
   final double width;
   final double height;
   final List<RenderedLayer> layers;
+  final ComicsDoc? sourceDocument;
 }
 
 /// Archive renderer used by macOS/Linux and by Web for byte sources.
@@ -96,6 +98,7 @@ final class DartComicsViewerBackend extends ChangeNotifier
   int _languageIndex = 0;
   bool _showPreview = false;
   double _position = 0;
+  double _documentScrollTravel = 0;
   bool _disposed = false;
 
   /// flows/comics-viewer/sdd-flutter-comics-viewer-dart Plan Task 3.1: one
@@ -156,11 +159,15 @@ final class DartComicsViewerBackend extends ChangeNotifier
       // a one-time load, not a hot path, so the redundant unzip is a
       // deliberate, disclosed, low-risk simplicity trade-off.
       final comicsDoc = await ComicsArchiveReader.readBytes(bytes);
+      if (_timer != null) await pause();
+      _position = 0;
+      _documentScrollTravel = 0;
       _archive = archive;
       _raw = raw;
       _comicsDoc = comicsDoc;
       _rebuild();
       _buildSoundTracks(archive, comicsDoc);
+      _onScrollChanged?.call(0);
     } catch (error) {
       _onError?.call(error.toString());
       rethrow;
@@ -200,7 +207,9 @@ final class DartComicsViewerBackend extends ChangeNotifier
       if (editorLayer.preview && !_showPreview) continue;
 
       final images = editorLayer.images;
-      LayerImage? image = _languageIndex < images.length ? images[_languageIndex] : null;
+      LayerImage? image = _languageIndex < images.length
+          ? images[_languageIndex]
+          : null;
       if (image == null || image.file.isEmpty) {
         image = images.isNotEmpty ? images.first : null;
       }
@@ -212,12 +221,14 @@ final class DartComicsViewerBackend extends ChangeNotifier
       // JSON layer at the same index (guaranteed to correspond 1:1: both
       // this list and ComicsArchiveReader's own iterate raw['layers'] in
       // original order, unfiltered).
-      final rawLayer = i < rawLayersJson.length ? rawLayersJson[i] as Map : const {};
+      final rawLayer = i < rawLayersJson.length
+          ? rawLayersJson[i] as Map
+          : const {};
       final rawImages = rawLayer['images'] as List? ?? const [];
       Map<String, dynamic>? rawImage =
           _languageIndex < rawImages.length && rawImages[_languageIndex] is Map
-              ? Map<String, dynamic>.from(rawImages[_languageIndex] as Map)
-              : null;
+          ? Map<String, dynamic>.from(rawImages[_languageIndex] as Map)
+          : null;
       if (rawImage == null || (rawImage['file'] as String? ?? '').isEmpty) {
         if (rawImages.isNotEmpty && rawImages.first is Map) {
           rawImage = Map<String, dynamic>.from(rawImages.first as Map);
@@ -238,7 +249,9 @@ final class DartComicsViewerBackend extends ChangeNotifier
                 .replaceFirst('{2}', '$row');
             final tile = archive.findFile('layers/$name');
             if (tile != null) {
-              tiles.add(DartViewerTile(_contentBytes(tile), column * 512, row * 512));
+              tiles.add(
+                DartViewerTile(_contentBytes(tile), column * 512, row * 512),
+              );
             }
           }
         }
@@ -250,14 +263,36 @@ final class DartComicsViewerBackend extends ChangeNotifier
       }
       if (tiles.isEmpty) continue;
 
-      layers.add(RenderedLayer(editorLayer: editorLayer, width: width, height: height, tiles: tiles));
+      layers.add(
+        RenderedLayer(
+          editorLayer: editorLayer,
+          width: width,
+          height: height,
+          tiles: tiles,
+        ),
+      );
     }
     document = DartComicsDocument(
       width: comicsDoc.width.toDouble(),
       height: comicsDoc.height.toDouble(),
       layers: layers,
+      sourceDocument: comicsDoc,
     );
     notifyListeners();
+  }
+
+  /// Updates the axis travel measured by the current surface layout.
+  ///
+  /// This is deliberately synchronous and notification-free: measuring or
+  /// resizing a viewport must not itself replay sound or schedule a rebuild.
+  void updateDocumentScrollTravel(double value) {
+    _documentScrollTravel = value.isFinite && value > 0 ? value : 0;
+  }
+
+  /// Converts a normalized controller position to document-space pixels.
+  double documentScrollOffsetFor(double normalizedPosition) {
+    if (!normalizedPosition.isFinite) return 0;
+    return normalizedPosition.clamp(0.0, 1.0) * _documentScrollTravel;
   }
 
   Uint8List _contentBytes(ArchiveFile file) => file.content;
@@ -275,21 +310,12 @@ final class DartComicsViewerBackend extends ChangeNotifier
   }
 
   /// flows/comics-viewer/sdd-flutter-comics-viewer-dart Plan Task 3.2. Same
-  /// `position * document.height` "time" coordinate space
-  /// [DartComicsViewerSurface] already uses for [KeyframeInterpolator].
-  /// `comics-viewer-ios`'s `ImageScrollView.swift` compares sound anims
-  /// against `contentOffset.y` by scaling the *anim* values up
-  /// (`animation.start * zoomScale`, `playSoundsByOffset`) rather than
-  /// scaling the offset down the way the visual path does
-  /// (`comics.process(scrollOffset: contentOffset.y / zoomScale)`) -- the
-  /// two are mathematically equivalent (comparing in either space works,
-  /// same underlying scroll fraction), so using the surface's own existing
-  /// "time" value here for sound too is consistent, not a mismatch.
+  /// Sound gates use the same measured document-space viewport offset as
+  /// visual animation and camera evaluation.
   void _evaluateSounds(double previousPosition, double newPosition) {
-    final height = document?.height;
-    if (height == null || _soundTracks.isEmpty) return;
-    final previousTime = previousPosition * height;
-    final currentTime = newPosition * height;
+    if (document == null || _soundTracks.isEmpty) return;
+    final previousTime = documentScrollOffsetFor(previousPosition);
+    final currentTime = documentScrollOffsetFor(newPosition);
     for (final entry in _soundTracks.entries) {
       final action = SoundGating.decide(
         soundAnims: entry.key.anims,

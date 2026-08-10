@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:archive/archive.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_comics_viewer/flutter_comics_viewer.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:viewer_example/main.dart';
@@ -114,6 +115,16 @@ Uint8List _renderableArchive() {
   return Uint8List.fromList(ZipEncoder().encode(archive));
 }
 
+class _SampleAssetBundle extends CachingAssetBundle {
+  _SampleAssetBundle(this.bytes);
+
+  final Uint8List bytes;
+
+  @override
+  Future<ByteData> load(String key) async =>
+      bytes.buffer.asByteData(bytes.offsetInBytes, bytes.lengthInBytes);
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -134,7 +145,7 @@ void main() {
       expect(find.byKey(viewerKey), findsOneWidget);
       expect(find.byType(DartComicsViewerSurface), findsOneWidget);
       expect(find.byType(Image), findsOneWidget);
-      expect(find.textContaining('Rendered sample.comics'), findsOneWidget);
+      expect(find.textContaining('Rendered widget-test'), findsOneWidget);
       expect(tester.takeException(), isNull);
 
       await tester.pumpWidget(const SizedBox.shrink());
@@ -160,10 +171,45 @@ void main() {
     slider.onChanged!(0.5);
     await tester.pump();
 
-    expect(find.text('Rendered sample.comics — 50%'), findsOneWidget);
+    expect(find.text('Rendered controls-test — 50%'), findsOneWidget);
     expect(tester.takeException(), isNull);
 
     await tester.pumpWidget(const SizedBox.shrink());
     debugDefaultTargetPlatformOverride = null;
   });
+
+  testWidgets(
+    'v2026 is default and one tap switches to v2012 at position zero',
+    (tester) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+      await tester.pumpWidget(
+        MyApp(assetBundle: _SampleAssetBundle(_renderableArchive())),
+      );
+      await tester.pumpAndSettle();
+
+      var selector = tester.widget<SegmentedButton<SampleVersion>>(
+        find.byKey(sampleSelectorKey),
+      );
+      expect(selector.selected, {SampleVersion.v2026});
+      expect(find.text('Rendered sample_v2026.comics — 0%'), findsOneWidget);
+
+      final slider = tester.widget<Slider>(find.byKey(viewerPositionKey));
+      slider.onChanged!(0.5);
+      await tester.pump();
+      expect(find.text('Rendered sample_v2026.comics — 50%'), findsOneWidget);
+
+      await tester.tap(find.text('v2012'));
+      await tester.pumpAndSettle();
+
+      selector = tester.widget<SegmentedButton<SampleVersion>>(
+        find.byKey(sampleSelectorKey),
+      );
+      expect(selector.selected, {SampleVersion.v2012});
+      expect(find.text('Rendered sample_v2012.comics — 0%'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      debugDefaultTargetPlatformOverride = null;
+    },
+  );
 }
