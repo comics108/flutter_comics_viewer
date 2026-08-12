@@ -1,6 +1,6 @@
 name: flutter_comics_viewer
 description: "Flutter plugin for rendering interactive comics and puzzles with animations and sound."
-version: 1.1.0
+version: 1.1.1
 homepage: https://nativemind.net
 
 environment:
@@ -12,7 +12,7 @@ dependencies:
   audioplayers: ^6.8.1
   flutter:
     sdk: flutter
-  flutter_comics: ^0.1.1
+  flutter_comics: ^0.2.1
   flutter_web_plugins:
     sdk: flutter
   web: ^1.0.0
