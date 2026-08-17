@@ -24,16 +24,12 @@ dev_dependencies:
     sdk: flutter
   flutter_lints: ^6.0.0
 
-# flows/comics-viewer/sdd-flutter-comics-viewer-dart, Plan: `flutter_comics` is genuinely published
-# to pub.dev (see `dependencies` above) but is under active local development in this monorepo at
-# `libs/flutter_comics` -- this override points local builds/tests at that live source instead of the
-# last-published snapshot, without weakening the real hosted constraint declared above (which is what
-# actually governs external consumers / a future real publish of this package). Remove this section,
-# not the `dependencies` entry, once `flutter_comics` is republished with the current local changes.
-
-#dependency_overrides:
-#  flutter_comics:
-#    path: ../../flutter_comics
+# Keep the hosted constraint above for external consumers. This override points
+# local builds/tests at the current upstream source until pub.dev catches up.
+dependency_overrides:
+  flutter_comics:
+    git:
+      url: https://github.com/comics108/futter_comics
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
