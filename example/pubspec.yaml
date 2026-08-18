@@ -31,7 +31,8 @@ dependencies:
 
 dependency_overrides:
   flutter_comics:
-    path: ../../../flutter_comics
+    git:
+      url: https://github.com/comics108/futter_comics
 
 dev_dependencies:
   archive: ^4.0.9
