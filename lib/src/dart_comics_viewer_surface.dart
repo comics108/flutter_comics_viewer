@@ -32,9 +32,20 @@ class DartComicsViewerSurface extends StatelessWidget {
               final documentScrollOffset = backend.documentScrollOffsetFor(
                 backend.position,
               );
+              final cameraPath = document.sourceDocument?.cameraPath;
+              final cameraOrigin = _activeCameraOrigin(cameraPath);
+              final cameraDisplacement = cameraOrigin == null
+                  ? null
+                  : CameraPathEvaluator.sample(
+                          cameraPath,
+                          documentScrollOffset,
+                        ) -
+                        cameraOrigin;
               return ClipRect(
                 child: Transform.translate(
-                  offset: Offset(0, -documentScrollOffset * scale),
+                  offset: cameraDisplacement == null
+                      ? Offset(0, -documentScrollOffset * scale)
+                      : Offset.zero,
                   child: SizedBox(
                     width: constraints.maxWidth,
                     height: contentHeight,
@@ -46,7 +57,7 @@ class DartComicsViewerSurface extends StatelessWidget {
                             layer: layer,
                             scale: scale,
                             documentScrollOffset: documentScrollOffset,
-                            cameraPath: document.sourceDocument?.cameraPath,
+                            cameraDisplacement: cameraDisplacement,
                           ),
                       ],
                     ),
@@ -61,18 +72,36 @@ class DartComicsViewerSurface extends StatelessWidget {
   }
 }
 
+Offset? _activeCameraOrigin(CameraPath? cameraPath) {
+  if (cameraPath == null) return null;
+  int? firstPosition;
+  int? seenPosition;
+  var hasMultiplePositions = false;
+  Offset? origin;
+  for (final point in cameraPath.points) {
+    if (!point.x.isFinite || !point.y.isFinite) continue;
+    seenPosition ??= point.position;
+    hasMultiplePositions |= point.position != seenPosition;
+    if (firstPosition == null || point.position <= firstPosition) {
+      firstPosition = point.position;
+      origin = Offset(point.x, point.y);
+    }
+  }
+  return hasMultiplePositions ? origin : null;
+}
+
 class _DartLayer extends StatelessWidget {
   const _DartLayer({
     required this.layer,
     required this.scale,
     required this.documentScrollOffset,
-    required this.cameraPath,
+    required this.cameraDisplacement,
   });
 
   final RenderedLayer layer;
   final double scale;
   final double documentScrollOffset;
-  final CameraPath? cameraPath;
+  final Offset? cameraDisplacement;
 
   @override
   Widget build(BuildContext context) {
@@ -86,12 +115,13 @@ class _DartLayer extends StatelessWidget {
       documentScrollOffset,
       layer.editorLayer.translate,
     );
-    final parallax = CameraPathEvaluator.parallaxAdjustment(
-      cameraPath,
-      documentScrollOffset,
-      layer.editorLayer.zDepth,
-    );
-    final translation = authoredTranslation + parallax;
+    final translation = cameraDisplacement == null
+        ? authoredTranslation
+        : authoredTranslation -
+              cameraDisplacement! *
+                  CameraPathEvaluator.responseForDepth(
+                    layer.editorLayer.zDepth,
+                  );
     final layerScale = KeyframeInterpolator.scaleAt(
       anims,
       documentScrollOffset,
