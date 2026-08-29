@@ -218,6 +218,30 @@ final filePath = 'assets/episodes/episode1.comics';
 final filePath = '/data/user/0/com.app/files/episode1.comics';
 ```
 
+### CameraPosition / Z-depth troubleshooting
+
+Check a visually incorrect v2026 result in this order:
+
+1. **Format contract — What should the renderer do?** Establish the expected behavior from the
+   [canonical v2026 format specification](https://github.com/comics108/comics/blob/main/flows/tdd-dot-comics-format/03-specifications.md).
+2. **Renderer conformance — Does the renderer violate the contract?** Compare the Dart surface at
+   the active/inert path boundary, CameraPosition traversal, depth composition, and legacy fallback.
+   If it differs, reproduce the mismatch and fix it with a focused renderer test; otherwise continue.
+3. **Fixture applicability — Does this hypothesis affect this fixture?** Inspect the failing
+   `.comics` for an active `cameraPath`, relevant `zDepth`, and execution of the suspected code path.
+   Do not use an unrelated real bug to explain the failure.
+4. **Serialized metadata behavior — Can the metadata explain the result?** Under the canonical
+   renderer, inspect path coverage and endpoint holds, depth values/responses, and the resulting
+   displacement or motion. Structurally valid metadata may still be unsuitable for the intended look.
+5. **Producer heuristics — Why were these values generated?** Only then consult the
+   [Bhagavadgita producer documentation](https://github.com/comics108/comics/tree/main/flows/comics-ai/sdd-comics-ai-bhagavadgita-from-lottie)
+   for camera-reference reconstruction, path generation, depth inference/fallbacks, and limitations.
+
+Stop before changing renderer math unless a renderer-contract mismatch is proven. A poor visual
+result alone is not proof of a renderer defect; do not compensate fixture- or producer-specific
+metadata in the normative renderer. Verify the hypothesis applies to the failing fixture, and do not
+treat generated camera/depth metadata as physical ground truth or artist intent.
+
 ### .puzzle File
 
 A .puzzle file is a ZIP archive containing:
