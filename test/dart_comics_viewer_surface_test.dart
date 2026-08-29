@@ -115,7 +115,7 @@ Future<void> _pumpSurface(
 }
 
 void main() {
-  testWidgets('camera depth is applied once after authored translation', (
+  testWidgets('active camera path applies one total depth response', (
     tester,
   ) async {
     final source =
@@ -144,17 +144,6 @@ void main() {
     final positions = _layerPositions(tester);
     expect(positions, hasLength(3));
 
-    // At document offset 400, cubic ease-out samples camera (70, 35).
-    // z=0: authored (10,20), no camera adjustment, then scale 2.
-    expect(positions[0].left, closeTo(20, 1e-9));
-    expect(positions[0].top, closeTo(40, 1e-9));
-    // z=1: response .5 => adjustment (-35,-17.5), then scale 2.
-    expect(positions[1].left, closeTo(-50, 1e-9));
-    expect(positions[1].top, closeTo(5, 1e-9));
-    // z=-.5: response 2 => adjustment (70,35), then scale 2.
-    expect(positions[2].left, closeTo(160, 1e-9));
-    expect(positions[2].top, closeTo(110, 1e-9));
-
     final strip = tester.widget<Transform>(
       find
           .descendant(
@@ -163,7 +152,28 @@ void main() {
           )
           .first,
     );
-    expect(strip.transform.storage[13], closeTo(-800, 1e-9));
+    // At document offset 400, cubic ease-out samples camera (70, 35).
+    // z=0 responds 1x, z=1 responds .5x, and z=-.5 responds 2x.
+    expect(
+      [
+        positions[0].left,
+        positions[0].top,
+        positions[1].left,
+        positions[1].top,
+        positions[2].left,
+        positions[2].top,
+        strip.transform.storage[13],
+      ],
+      [
+        closeTo(-120, 1e-9),
+        closeTo(-30, 1e-9),
+        closeTo(-50, 1e-9),
+        closeTo(5, 1e-9),
+        closeTo(-260, 1e-9),
+        closeTo(-100, 1e-9),
+        closeTo(0, 1e-9),
+      ],
+    );
     await backend.dispose();
   });
 
@@ -202,6 +212,96 @@ void main() {
       await backend.dispose();
     },
   );
+
+  testWidgets('absent empty and inert camera paths retain traversal', (
+    tester,
+  ) async {
+    for (final cameraPath in <CameraPath?>[
+      null,
+      CameraPath(),
+      CameraPath([CameraKeyframe(position: 0, x: 100, y: 100)]),
+      CameraPath([
+        CameraKeyframe(position: 0, x: 100, y: 100),
+        CameraKeyframe(position: 0, x: 200, y: 200),
+      ]),
+      CameraPath([
+        CameraKeyframe(position: 0, x: 100, y: 100),
+        CameraKeyframe(position: 800, x: double.nan, y: 200),
+      ]),
+    ]) {
+      final source = ComicsDoc(
+        name: 'fallback',
+        type: DocType.comics,
+        width: 100,
+        height: 1000,
+      )..cameraPath = cameraPath;
+      final backend = DartComicsViewerBackend()
+        ..document = DartComicsDocument(
+          width: 100,
+          height: 1000,
+          layers: [_layer(0)],
+          sourceDocument: source,
+        );
+      await backend.setScrollPosition(0.5);
+
+      await _pumpSurface(tester, backend: backend, size: const Size(200, 400));
+
+      final position = _layerPositions(tester).single;
+      final strip = tester.widget<Transform>(
+        find
+            .descendant(
+              of: find.byType(ClipRect),
+              matching: find.byType(Transform),
+            )
+            .first,
+      );
+      expect(position.left, 20);
+      expect(position.top, 40);
+      expect(strip.transform.storage[13], closeTo(-800, 1e-9));
+      await backend.dispose();
+    }
+  });
+
+  testWidgets('canonical last duplicate defines the active camera origin', (
+    tester,
+  ) async {
+    final source =
+        ComicsDoc(
+            name: 'canonical-origin',
+            type: DocType.comics,
+            width: 100,
+            height: 1000,
+          )
+          ..cameraPath = CameraPath([
+            CameraKeyframe(position: 0, x: 100, y: 50),
+            CameraKeyframe(position: 800, x: 100, y: 50),
+            CameraKeyframe(position: 0, x: 20, y: 10),
+          ]);
+    final backend = DartComicsViewerBackend()
+      ..document = DartComicsDocument(
+        width: 100,
+        height: 1000,
+        layers: [_layer(0)],
+        sourceDocument: source,
+      );
+    await backend.setScrollPosition(0.5);
+
+    await _pumpSurface(tester, backend: backend, size: const Size(200, 400));
+
+    final position = _layerPositions(tester).single;
+    final strip = tester.widget<Transform>(
+      find
+          .descendant(
+            of: find.byType(ClipRect),
+            matching: find.byType(Transform),
+          )
+          .first,
+    );
+    expect(position.left, closeTo(-120, 1e-9));
+    expect(position.top, closeTo(-30, 1e-9));
+    expect(strip.transform.storage[13], closeTo(0, 1e-9));
+    await backend.dispose();
+  });
 
   testWidgets('short content and an inert path stay at the authored origin', (
     tester,
